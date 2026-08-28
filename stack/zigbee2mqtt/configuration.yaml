@@ -1,0 +1,24 @@
+# Configuration de DEMARRAGE de zigbee2mqtt, deposee seulement si le fichier
+# est absent, puis rendue une fois par hooks/install.py.
+#
+# Passe ce premier passage, zigbee2mqtt REECRIT ce fichier lui-meme et y range
+# le network_key, le pan_id et l'ext_pan_id du reseau qu'il forme. Ces valeurs
+# sont l'identite du reseau : les remplacer n'affiche aucune erreur, cela forme
+# simplement un AUTRE reseau, sur lequel aucun des equipements deja apparies
+# ne se trouve. D'ou sa presence dans PRESERVED.
+homeassistant:
+  enabled: true
+
+mqtt:
+  base_topic: zigbee2mqtt
+  # Le broker du meme package, sur la boucle locale : les deux conteneurs sont
+  # en network_mode: host.
+  server: mqtt://localhost:1883
+  user: mqtt
+
+serial:
+  # Mode reseau : la radio Zigbee est exposee en ser2net par la passerelle.
+  # En mode USB, remplacer par le peripherique — le wizard pose la question,
+  # et seule cette ligne change.
+  port: tcp://@SLZB_HOST@:@ZIGBEE_PORT@
+  adapter: zstack

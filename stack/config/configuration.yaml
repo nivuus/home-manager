@@ -1,0 +1,12 @@
+# Configuration de DEMARRAGE, deposee seulement si config/configuration.yaml
+# est absent. Une installation vivante porte ici les automations, les
+# dashboards et les integrations d'une maison entiere : ce fichier ne doit
+# JAMAIS en ecraser un existant.
+default_config:
+
+# Le package ne versionne aucune configuration personnelle. Ces trois
+# includes existent pour que l'interface puisse ecrire des le premier
+# demarrage, sans quoi Home Assistant refuse d'enregistrer une automation.
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml
