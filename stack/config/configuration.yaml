@@ -4,6 +4,13 @@
 # JAMAIS en ecraser un existant.
 default_config:
 
+# Charge tout fichier depose dans config/packages/. C'est par la que les
+# packages satellites livrent leurs fragments de configuration — des
+# intent_script, par exemple — sans jamais ecrire dans ce fichier-ci, qui
+# appartient au proprietaire de la machine.
+homeassistant:
+  packages: !include_dir_named packages
+
 # Le package ne versionne aucune configuration personnelle. Ces trois
 # includes existent pour que l'interface puisse ecrire des le premier
 # demarrage, sans quoi Home Assistant refuse d'enregistrer une automation.

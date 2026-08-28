@@ -91,6 +91,15 @@ with tempfile.TemporaryDirectory() as root:
 
     check("le bootstrap de Home Assistant est cree",
           (dest / "config" / "configuration.yaml").is_file(), True)
+
+    # Le bootstrap declare packages: pour que les satellites puissent deposer
+    # un fragment de configuration qui sera VRAIMENT charge. Sans cette ligne,
+    # config/packages/ existe et Home Assistant l'ignore — un satellite
+    # deposerait ses intents dans le vide.
+    bootstrap = (dest / "config" / "configuration.yaml").read_text()
+    check("le bootstrap charge le repertoire packages/",
+          "packages: !include_dir_named packages" in bootstrap, True)
+
     check("la configuration du broker est deposee",
           (dest / "mosquitto" / "mosquitto.conf").is_file(), True)
 
