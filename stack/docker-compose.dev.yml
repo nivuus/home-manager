@@ -33,6 +33,3 @@ services:
     volumes:
       - /home/mallanic/Projects/Nivuus/packages/marketplace/custom_components/docker_marketplace:/config/custom_components/docker_marketplace
       - /home/mallanic/Projects/Nivuus/packages/marketplace/catalog:/config/catalog
-      # home_stock jusqu'a ce que le package satellite existe : lui seul des
-      # cinq binds d'origine pointait sur une source reelle.
-      - /opt/nivuus/HomeAssistant/data/meal/custom_components/home_stock:/config/custom_components/home_stock
