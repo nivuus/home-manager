@@ -160,6 +160,64 @@ with tempfile.TemporaryDirectory() as root:
     check("les variables manquantes sont ajoutees",
           values["BACKBONE_IF"], "br0")
 
+# --- un .env existant nomme encore la surcouche de developpement ---------
+# hooks/install.py retire docker-compose.dev.yml du repertoire de deploiement
+# a CHAQUE passage (regle 3), meme sur une reinstallation. Si le .env deja en
+# place venait d'une version anterieure du hook et nommait encore ce fichier
+# dans COMPOSE_FILE, le laisser tel quel rendrait TOUTE commande
+# `docker compose` impossible sur la pile — meme celles qui n'ont rien a voir
+# avec le developpement, comme `restart homeassistant`.
+with tempfile.TemporaryDirectory() as root:
+    dest = pathlib.Path(root) / DEST_REL
+    (dest / "config").mkdir(parents=True)
+    (dest / "mosquitto").mkdir(parents=True)
+    (dest / "zigbee2mqtt").mkdir(parents=True)
+    (dest / "config" / "configuration.yaml").write_text("# deja installe\n")
+    (dest / "mosquitto" / "mosquitto.conf").write_text("# deja installe\n")
+    (dest / "zigbee2mqtt" / "configuration.yaml").write_text(
+        "advanced:\n  network_key: [1, 2, 3]\n  pan_id: 28047\n")
+    (dest / ".env").write_text(
+        "TZ=Europe/Paris\n"
+        "SLZB_HOST=192.168.0.79\n"
+        "COMPOSE_FILE=docker-compose.yml:docker-compose.dev.yml\n")
+
+    proc = run(root)
+    check("reinstallation avec surcouche dev referencee reussit",
+          proc.returncode, 0)
+    check("le fichier de developpement reste absent du deploiement",
+          (dest / "docker-compose.dev.yml").exists(), False)
+
+    values = env_values(dest / ".env")
+    check("COMPOSE_FILE ne nomme plus la surcouche de developpement absente",
+          values["COMPOSE_FILE"], "docker-compose.yml")
+    check("les autres valeurs du .env existant restent intactes",
+          values["TZ"], "Europe/Paris")
+    check("SLZB_HOST du .env existant reste intact",
+          values["SLZB_HOST"], "192.168.0.79")
+
+# La meme correction ne doit RIEN faire d'autre : quand COMPOSE_FILE nomme un
+# fichier qui est reellement deploye (la surcouche USB), seule DEV_OVERLAY
+# est retiree, jamais une autre entree.
+with tempfile.TemporaryDirectory() as root:
+    dest = pathlib.Path(root) / DEST_REL
+    (dest / "config").mkdir(parents=True)
+    (dest / "mosquitto").mkdir(parents=True)
+    (dest / "zigbee2mqtt").mkdir(parents=True)
+    (dest / "config" / "configuration.yaml").write_text("# deja installe\n")
+    (dest / "mosquitto" / "mosquitto.conf").write_text("# deja installe\n")
+    (dest / "zigbee2mqtt" / "configuration.yaml").write_text(
+        "advanced:\n  network_key: [1, 2, 3]\n  pan_id: 28047\n")
+    (dest / ".env").write_text(
+        "TZ=Europe/Paris\n"
+        "COMPOSE_FILE=docker-compose.yml:docker-compose.dev.yml:"
+        "docker-compose.usb.yml\n")
+
+    run(root, {**ANSWERS, "radio_mode": "usb"})
+    values = env_values(dest / ".env")
+    check("seule la surcouche dev est retiree, la surcouche USB reste",
+          values["COMPOSE_FILE"],
+          "docker-compose.yml:docker-compose.usb.yml")
+
 # --- reponses invalides --------------------------------------------------
 with tempfile.TemporaryDirectory() as root:
     # Valider AVANT de deposer le premier octet : un appelant et le package en

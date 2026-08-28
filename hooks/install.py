@@ -15,7 +15,11 @@ TROIS REGLES PORTENT LE RESTE.
    reseau Zigbee ; .env le mot de passe MQTT. Cette phase tourne aussi sur une
    machine deja installee (`install.py --root /`), ou une reecriture
    detruirait tout cela sans bruit. Les cles absentes du .env sont AJOUTEES,
-   les presentes ne sont pas touchees ; les fichiers existants sont sautes.
+   les presentes ne sont pas touchees — SAUF UNE, COMPOSE_FILE, et seulement
+   pour lui retirer une reference que la regle 3 vient de rendre invalide
+   (voir scrub_dev_overlay()) : la seule reecriture d'une valeur existante que
+   ce hook s'autorise, parce que la laisser telle quelle casse la pile plus
+   surement qu'elle ne la protege.
 
 2. LES REPONSES SONT VALIDEES AVANT LA PREMIERE ECRITURE. Le hook lit son
    contexte sur stdin, et le chemin autonome que le contrat existe pour
@@ -26,7 +30,10 @@ TROIS REGLES PORTENT LE RESTE.
 3. LE FICHIER DE DEVELOPPEMENT NE PART PAS. docker-compose.dev.yml monte des
    depots qui n'existent que sur la machine de son auteur ; docker creerait
    ailleurs des repertoires vides que Home Assistant chargerait comme des
-   integrations cassees.
+   integrations cassees. Il est donc retire du repertoire de deploiement a
+   CHAQUE passage, y compris une reinstallation — ce qui peut laisser un .env
+   preexistant reference un fichier qui vient de disparaitre ; regle 1 dit ce
+   que le hook en fait.
 """
 import argparse
 import json
@@ -100,6 +107,34 @@ def merge_env(existing, rendered):
         return existing
     tail = "\n# --- Ajoute par le package home-manager ---\n" + "\n".join(added)
     return existing.rstrip("\n") + "\n" + tail + "\n"
+
+
+def scrub_dev_overlay(text):
+    """Retirer DEV_OVERLAY de COMPOSE_FILE dans un .env EXISTANT.
+
+    Regle 3 : DEV_OVERLAY est supprime du repertoire de deploiement a chaque
+    passage, y compris sur une reinstallation. Mais un .env deja present (donc
+    JAMAIS reecrit — regle 1) peut avoir ete rendu par une version anterieure
+    du hook, quand la surcouche etait encore deployee, et son COMPOSE_FILE la
+    nomme toujours. Une reference a un fichier absent dans COMPOSE_FILE rend
+    TOUTE commande `docker compose` impossible sur la pile — pas seulement
+    celles qui touchent au developpement, TOUTES, y compris `restart
+    homeassistant`. C'est la seule valeur d'un .env existant que ce hook a le
+    droit de reecrire, et seulement celle-la : jamais une cle absente, jamais
+    une valeur qui ne nomme pas un fichier que ce hook vient de retirer.
+    """
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, _, value = line.partition("=")
+        if key.strip() != "COMPOSE_FILE":
+            continue
+        parts = [p for p in value.split(":") if p and p != DEV_OVERLAY]
+        lines[i] = f"{key}={':'.join(parts)}"
+    body = "\n".join(lines)
+    return body + "\n" if text.endswith("\n") else body
 
 
 def render_env(values):
@@ -209,7 +244,13 @@ def main():
     env_path = os.path.join(dest, ".env")
     if os.path.isfile(env_path):
         with open(env_path) as fh:
-            rendered = merge_env(fh.read(), rendered)
+            existing = fh.read()
+        rendered = merge_env(existing, rendered)
+        # DEV_OVERLAY vient d'etre retire du repertoire de deploiement (regle
+        # 3), meme sur cette reinstallation. Si le COMPOSE_FILE que ce .env
+        # portait deja le nommait encore, le laisser tel quel casserait toute
+        # commande `docker compose` sur la pile — voir scrub_dev_overlay().
+        rendered = scrub_dev_overlay(rendered)
         emit({"event": "progress", "pct": 75,
               "msg": ".env existant conserve, variables manquantes ajoutees"})
     with open(env_path, "w") as fh:
