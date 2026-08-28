@@ -1,9 +1,10 @@
-# NON DEPLOYE — hooks/install.py ne copie pas ce fichier.
+# NON DEPLOYE PAR hooks/install.py — surcouche de la machine de developpement.
 #
-# Il monte les integrations en cours de developpement depuis les depots de la
-# machine de Maxime. Sur toute autre machine ces chemins n'existent pas, et
-# docker creerait des repertoires vides que Home Assistant chargerait comme
-# des integrations cassees.
+# Elle monte les integrations en cours de developpement depuis les depots
+# locaux. Sur toute autre machine ces chemins n'existent pas, et docker y
+# creerait des repertoires VIDES que Home Assistant chargerait comme des
+# integrations cassees. Ce n'est pas theorique : c'est exactement ce qui est
+# arrive ici (voir plus bas).
 #
 # Usage sur la machine de dev :
 #   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
@@ -11,11 +12,27 @@
 # A mesure que les satellites existent (home-stock, home-desk), leur bind
 # disparait d'ici : c'est leur propre hooks/install.py qui depose le
 # custom_component dans config/custom_components/.
+#
+# CE QUE LA BASCULE DU 2026-08-28 A REVELE
+#
+# Un bind dont la source n'existe pas ne fait pas echouer docker : il cree un
+# repertoire vide et le monte PAR-DESSUS le contenu reel. L'integration
+# disparait alors en silence, et rien ne le signale tant que le conteneur
+# tourne — le montage survit a la disparition de sa source.
+#
+# - `ha_ai_learner` : son code vit dans config/custom_components/ (18 fichiers,
+#   manifest compris). Le bind vers HA-AI/, vide depuis le 2026-08-19, le
+#   MASQUAIT. Le bind est retire : le vrai code reprend sa place.
+# - `docker_marketplace` et `catalog` : la reorganisation de Nivuus a deplace
+#   `marketplace` sous `packages/`. Les chemins sont corriges ici.
+# - `home_agent` : source introuvable, ici comme ailleurs sur la machine. Le
+#   bind est retire plutot que de remonter un repertoire vide. A retablir
+#   quand le depot sera localise.
 services:
   homeassistant:
     volumes:
-      - /home/mallanic/Projects/HA-AI/custom_components/ha_ai_learner:/config/custom_components/ha_ai_learner
-      - /home/mallanic/Projects/Nivuus/marketplace/custom_components/docker_marketplace:/config/custom_components/docker_marketplace
-      - /home/mallanic/Projects/Nivuus/home_agent:/config/custom_components/home_agent
-      - /home/mallanic/Projects/Nivuus/marketplace/catalog:/config/catalog
+      - /home/mallanic/Projects/Nivuus/packages/marketplace/custom_components/docker_marketplace:/config/custom_components/docker_marketplace
+      - /home/mallanic/Projects/Nivuus/packages/marketplace/catalog:/config/catalog
+      # home_stock jusqu'a ce que le package satellite existe : lui seul des
+      # cinq binds d'origine pointait sur une source reelle.
       - /opt/nivuus/HomeAssistant/data/meal/custom_components/home_stock:/config/custom_components/home_stock
