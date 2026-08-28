@@ -1,0 +1,36 @@
+apiVersion: nivuus.dev/v1
+name: home-manager
+version: 1.0.0
+label: "Domotique (Home Assistant, Thread, Zigbee, Matter, MQTT)"
+tier: userspace
+
+# Aucun `requires:`, aucun `claims:`, aucun `platform:` — les trois
+# deliberement.
+#
+# `requires.features: [docker]` aurait ete le reflexe. Le precedent pose par
+# console avec firewalld tranche : un package declare ses PROPRES dependances
+# plutot que de se coupler a la liste de features du moteur, sinon
+# l'installation autonome sur une Debian ordinaire — que le contrat existe
+# precisement pour permettre — casse. Si l'operateur a coche la feature docker,
+# l'apt ci-dessous est un no-op idempotent.
+#
+# `claims:` aurait ete faux. Les radios Thread et Zigbee sont jointes par le
+# reseau (SLZB-MR2U en ser2net), pas par un peripherique que deux packages se
+# disputeraient. Un claim exclusif ferait entrer ce package en conflit avec
+# tout futur satellite partageant la meme passerelle — l'inverse de ce que le
+# modele socle + satellites demande.
+#
+# `requires.capabilities` : rien dans le vocabulaire du moteur (iommu,
+# gpu-discrete, nvme-dedicated, cpu-hybrid) n'est exige par la domotique. Les
+# demander masquerait le package sur des machines ou il fonctionne.
+
+apt:
+  - docker.io
+  - docker-compose-v2
+
+wizard:
+  questions: wizard.yaml
+
+hooks:
+  install: hooks/install.py
+  activate: hooks/activate.py
