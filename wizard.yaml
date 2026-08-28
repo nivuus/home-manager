@@ -1,0 +1,71 @@
+# Les valeurs par defaut sont celles de l'hote de reference : une installation
+# chez son auteur se fait en validant le formulaire tel quel. Elles n'en sont
+# pas moins des QUESTIONS — ecrites en dur dans le compose, elles rendaient le
+# package installable chez une seule personne.
+
+- key: radio_mode
+  type: choix
+  label: "Radios Thread et Zigbee : passerelle reseau ou peripheriques USB"
+  # « choices », en anglais : c'est la cle que lit packages/wizard.py. Un
+  # « choix: » ici ferait une question de type choix sans aucun choix, que le
+  # moteur refuse au chargement.
+  choices: [reseau, usb]
+  default: reseau
+  required: true
+
+- key: slzb_host
+  type: texte
+  label: "Adresse de la passerelle radio (mode reseau)"
+  default: "192.168.0.79"
+
+- key: thread_port
+  type: texte
+  label: "Port ser2net de la radio Thread"
+  default: "6638"
+
+- key: zigbee_port
+  type: texte
+  label: "Port ser2net de la radio Zigbee"
+  default: "7638"
+
+- key: rcp_baudrate
+  type: texte
+  label: "Debit de la liaison Thread (baud)"
+  default: "460800"
+
+- key: thread_device
+  type: texte
+  label: "Peripherique Thread (mode USB uniquement)"
+  default: "/dev/ttyACM0"
+
+- key: zigbee_device
+  type: texte
+  label: "Peripherique Zigbee (mode USB uniquement)"
+  default: "/dev/ttyACM1"
+
+# 20 dBm est le maximum du SLZB-MR2U et reste sous la limite ETSI de 100 mW.
+# La valeur compte : un enfant Thread a -77 dBm perdait des trames en
+# downlink au defaut de 0 dBm.
+- key: thread_txpower
+  type: texte
+  label: "Puissance d'emission Thread (dBm)"
+  default: "20"
+
+# L'interface que la bordure Thread et le controleur Matter annoncent comme
+# backbone. C'est le pont du LAN, pas la carte physique.
+- key: backbone_if
+  type: texte
+  label: "Interface reseau du backbone (pont LAN)"
+  default: "localBridge"
+
+- key: timezone
+  type: texte
+  label: "Fuseau horaire"
+  default: "Europe/Paris"
+
+# Sans defaut, deliberement : un mot de passe par defaut partage par toutes
+# les installations est pire que pas de mot de passe. Vide, hooks/install.py
+# n'ecrit aucun compte et le broker garde ceux qu'il a deja.
+- key: mqtt_password
+  type: secret
+  label: "Mot de passe du compte MQTT « mqtt » (vide = ne pas modifier)"
