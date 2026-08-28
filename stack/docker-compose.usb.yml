@@ -1,0 +1,19 @@
+# Surcouche « radios en USB ». Le mode par defaut est le reseau (ser2net sur
+# une passerelle type SLZB-MR2U) ; cette surcouche s'active quand le wizard
+# repond que les radios sont branchees en direct.
+#
+# Elle n'est pas un fichier de rechange : docker compose FUSIONNE, donc seules
+# les cles presentes ici ecrasent celles du fichier principal.
+services:
+  otbr:
+    environment:
+      # Le mode TCP est neutralise ; otbr-agent ouvre directement le device.
+      RCP_USE_TCP: "0"
+      RCP_TTY: "${THREAD_DEVICE}"
+    devices:
+      - /dev/net/tun
+      - "${THREAD_DEVICE}:${THREAD_DEVICE}"
+
+  zigbee2mqtt:
+    devices:
+      - "${ZIGBEE_DEVICE}:${ZIGBEE_DEVICE}"

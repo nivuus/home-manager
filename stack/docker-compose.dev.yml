@@ -1,0 +1,21 @@
+# NON DEPLOYE — hooks/install.py ne copie pas ce fichier.
+#
+# Il monte les integrations en cours de developpement depuis les depots de la
+# machine de Maxime. Sur toute autre machine ces chemins n'existent pas, et
+# docker creerait des repertoires vides que Home Assistant chargerait comme
+# des integrations cassees.
+#
+# Usage sur la machine de dev :
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+#
+# A mesure que les satellites existent (home-stock, home-desk), leur bind
+# disparait d'ici : c'est leur propre hooks/install.py qui depose le
+# custom_component dans config/custom_components/.
+services:
+  homeassistant:
+    volumes:
+      - /home/mallanic/Projects/HA-AI/custom_components/ha_ai_learner:/config/custom_components/ha_ai_learner
+      - /home/mallanic/Projects/Nivuus/marketplace/custom_components/docker_marketplace:/config/custom_components/docker_marketplace
+      - /home/mallanic/Projects/Nivuus/home_agent:/config/custom_components/home_agent
+      - /home/mallanic/Projects/Nivuus/marketplace/catalog:/config/catalog
+      - /opt/nivuus/HomeAssistant/data/meal/custom_components/home_stock:/config/custom_components/home_stock

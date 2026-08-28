@@ -1,0 +1,157 @@
+# Package Nivuus home-manager — les six services de la domotique.
+#
+# Ils vivaient dans trois fichiers, un marketplace et un `docker run` oublie :
+# docker-compose.yml (HA, otbr, zigbee2mqtt), docker-socket-proxy/ (le proxy),
+# config/stacks/mosquitto/ genere par l'integration docker_marketplace de Home
+# Assistant, et matterjs-server que RIEN ne decrivait.
+#
+# Reunir mosquitto ici supprime une dependance circulaire reelle : Home
+# Assistant lancait le broker dont Home Assistant lui-meme depend, et
+# zigbee2mqtt avec lui. Si HA ne demarrait pas, la domotique ne remontait pas.
+name: home-manager
+
+services:
+  homeassistant:
+    container_name: homeassistant
+    image: ghcr.io/home-assistant/home-assistant:stable
+    labels:
+      com.centurylinklabs.watchtower.enable: true
+    volumes:
+      - ./config:/config
+      - ./media:/media
+      - /etc/localtime:/etc/localtime:ro
+      - /run/dbus:/run/dbus:ro
+      # Le socket Docker brut a ete retire le 2026-07-27 : HA ne joint le
+      # demon qu'a travers docker-socket-proxy, sur 127.0.0.1:2375. Monter
+      # /var/run/docker.sock ici est un root-sur-l-hote trivial si HA ou une
+      # integration tierce est compromise.
+      - /dev:/dev
+    restart: always
+    privileged: true
+    network_mode: host
+    user: "0:0"
+
+  # L'unique conteneur qui touche le socket brut. Il expose une API Docker
+  # filtree sur la boucle locale, jamais sur le reseau.
+  docker-socket-proxy:
+    container_name: docker-socket-proxy
+    image: tecnativa/docker-socket-proxy:latest
+    restart: always
+    read_only: true
+    tmpfs:
+      - /run
+      - /tmp
+    environment:
+      PING: 1
+      VERSION: 1
+      INFO: 1
+      EVENTS: 1          # monitor_docker suit les ajouts/retraits
+      CONTAINERS: 1
+      IMAGES: 1
+      NETWORKS: 1
+      VOLUMES: 1
+      POST: 1            # le marketplace deploie et arrete des applications
+      # Refus explicites, pour qu'un audit les voie.
+      EXEC: 0
+      BUILD: 0
+      COMMIT: 0
+      AUTH: 0
+      SECRETS: 0
+      CONFIGS: 0
+      SWARM: 0
+      SERVICES: 0
+      TASKS: 0
+      NODES: 0
+      PLUGINS: 0
+      SYSTEM: 0
+      SESSION: 0
+      DISTRIBUTION: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "127.0.0.1:2375:2375"
+
+  mosquitto:
+    container_name: mosquitto
+    image: eclipse-mosquitto:latest
+    restart: always
+    volumes:
+      - ./mosquitto:/mosquitto/data
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - "1883:1883"
+      - "1884:1884"
+      - "8883:8883"
+      - "8884:8884"
+
+  # Bordure Thread. Radio 1 (EFR32MG21) du SLZB-MR2U, joignable en ser2net :
+  # RCP_USE_TCP=1 fait ouvrir a socat un pont tcp -> pty qu'otbr-agent utilise.
+  # Ce mode reseau remplace l'USB depuis le 2026-07-18 et supprime les
+  # ttyACM changeants, usbguard et les « error -71 ».
+  otbr:
+    container_name: otbr
+    image: bnutzer/otbr-tcp
+    restart: always
+    privileged: true
+    network_mode: host
+    devices:
+      - /dev/net/tun
+    environment:
+      RCP_USE_TCP: "1"
+      RCP_HOST: "${SLZB_HOST}"
+      RCP_PORT: "${THREAD_PORT}"
+      RCP_TTY: "/tmp/ttyOTBR"
+      RCP_BAUDRATE: "${RCP_BAUDRATE}"
+      # Le SLZB post-reset a le controle de flux materiel desactive sur l'UART
+      # EFR32 : l'option par defaut de l'image (« &uart-flow-control ») bloque
+      # alors le TX vers la radio — la reception fonctionne, les commandes ne
+      # parviennent jamais.
+      OTBR_RCP_ADDITIONAL_ARGS: ""
+      OTBR_REST_LISTEN_ADDRESS: "0.0.0.0"
+      OTBR_REST_LISTEN_PORT: "8082"
+      OTBR_BACKBONE_IF: "${BACKBONE_IF}"
+    volumes:
+      - ./otbr:/var/lib/thread
+    # otbr-agent NE PERSISTE PAS le txpower : s6-overlay execute ce command
+    # apres le demarrage des services, et la boucle le reapplique toutes les
+    # 5 minutes pour couvrir un redemarrage interne d'otbr-agent. Retirer ce
+    # command, c'est revenir au defaut 0 dBm.
+    command:
+      - /bin/sh
+      - -c
+      - until ot-ctl txpower ${THREAD_TXPOWER}; do sleep 5; done;
+        while true; do sleep 300;
+        ot-ctl txpower ${THREAD_TXPOWER} >/dev/null 2>&1 || true; done
+
+  # Zigbee. Radio 2 (CC2652P) du meme SLZB-MR2U, sur son propre port ser2net.
+  # Remplace ZHA depuis le 2026-07-14 : les rideaux Tuya TS030F ignoraient
+  # go_to_lift_percentage sous ZHA.
+  #
+  # Le port n'est PAS une variable d'environnement : zigbee2mqtt le lit dans
+  # son propre configuration.yaml, rendu une seule fois par hooks/install.py.
+  zigbee2mqtt:
+    container_name: zigbee2mqtt
+    image: koenkk/zigbee2mqtt:latest
+    restart: always
+    network_mode: host
+    volumes:
+      - ./zigbee2mqtt:/app/data
+      - /run/udev:/run/udev:ro
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      TZ: "${TZ}"
+
+  # Controleur Matter. Ce service n'existait dans AUCUN fichier : il ne vivait
+  # que dans le demon Docker, sans label ni compose, donc irreproductible.
+  matterjs-server:
+    container_name: matterjs-server
+    image: ghcr.io/matter-js/matterjs-server:stable
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      LOG_LEVEL: info
+      STORAGE_PATH: /data
+    volumes:
+      - ./matter_js:/data
+    command: ["--storage-path", "/data", "--primary-interface", "${BACKBONE_IF}"]
