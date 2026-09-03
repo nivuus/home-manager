@@ -1,4 +1,4 @@
-# Package Nivuus home-manager — les six services de la domotique.
+# Package Nivuus home-manager — les huit services de la domotique.
 #
 # Ils vivaient dans trois fichiers, un marketplace et un `docker run` oublie :
 # docker-compose.yml (HA, otbr, zigbee2mqtt), docker-socket-proxy/ (le proxy),
@@ -8,6 +8,11 @@
 # Reunir mosquitto ici supprime une dependance circulaire reelle : Home
 # Assistant lancait le broker dont Home Assistant lui-meme depend, et
 # zigbee2mqtt avec lui. Si HA ne demarrait pas, la domotique ne remontait pas.
+#
+# Music Assistant et son generateur de jetons PO (Proof of Origin) suivent le
+# meme principe : ce sont des services dont Home Assistant depend, et les
+# laisser en dehors reintroduirait la dependance circulaire que ce package
+# supprime.
 name: home-manager
 
 services:
