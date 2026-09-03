@@ -123,7 +123,6 @@ Deux services ajoutés à `stack/docker-compose.yml`.
     init: true
     ports:
       - "127.0.0.1:4416:4416"
-    command: ["--host", "0.0.0.0"]
 ```
 
 `network_mode: host` pour `music-assistant` n'est pas décoratif : MA sert ses
@@ -133,8 +132,9 @@ annoncerait une adresse qu'elles ne savent pas joindre. Les ports 8095 (UI) et
 
 **Le PO token server est lié à la boucle locale**, `127.0.0.1:4416`, même
 raisonnement que `docker-socket-proxy` : c'est un rouage interne de MA, pas un
-service du réseau. Le `--host 0.0.0.0` ne concerne que l'intérieur du
-conteneur, sans quoi la publication ne joindrait rien.
+service du réseau. L'image n'expose que `-p/--port` : le serveur écoute déjà
+toutes les interfaces à l'intérieur du conteneur, et c'est la publication en
+boucle locale qui restreint, pas un flag de commande.
 
 **Son tag suit `latest`, délibérément** — et c'est l'inverse du réflexe.
 `music_assistant/providers/ytmusic/__init__.py` installe le client

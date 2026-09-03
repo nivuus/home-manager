@@ -210,8 +210,9 @@ un `KeyError: 'bgutil-pot-provider'`.
   # le service n'est pas optionnel.
   #
   # Publie sur la SEULE boucle locale, comme docker-socket-proxy : c'est un
-  # rouage interne de MA. Le --host 0.0.0.0 ne concerne que l'interieur du
-  # conteneur, sans quoi la publication ne joindrait rien.
+  # rouage interne de MA. L'image n'expose que -p/--port : le serveur ecoute
+  # deja toutes les interfaces a l'interieur du conteneur, et c'est la
+  # publication en boucle locale qui restreint, pas un flag de commande.
   #
   # Le tag suit `latest` DELIBEREMENT, et c'est l'inverse du reflexe. MA
   # installe le client bgutil-ytdlp-pot-provider SANS VERSION a chaque
@@ -225,7 +226,6 @@ un `KeyError: 'bgutil-pot-provider'`.
     init: true
     ports:
       - "127.0.0.1:4416:4416"
-    command: ["--host", "0.0.0.0"]
 ```
 
 - [ ] **Step 4: Lancer la suite complète**
