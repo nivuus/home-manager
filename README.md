@@ -1,6 +1,6 @@
 # home-manager — package Nivuus
 
-La domotique de la maison : Home Assistant et les cinq services dont il
+La domotique de la maison : Home Assistant et les sept services dont il
 dépend, en un seul paquet installable.
 
 ## Ce qu'il installe
@@ -12,6 +12,8 @@ dépend, en un seul paquet installable.
 | `zigbee2mqtt` | réseau Zigbee |
 | `otbr` | bordure Thread (OpenThread Border Router) |
 | `matterjs-server` | contrôleur Matter |
+| `music-assistant` | serveur musical, sur le port 8095 |
+| `bgutil-pot-provider` | générateur de jetons YouTube, boucle locale seule |
 | `docker-socket-proxy` | API Docker filtrée, seule voie d'accès de HA au démon |
 
 Déploiement : `/opt/nivuus/home-manager`.
