@@ -952,12 +952,45 @@ Conséquence honnête : que le prochain démarrage soit **silencieux** n'est pas
 *observé*, il est *déduit* — l'entrée qui criait n'existe plus dans
 `core.config_entries`, sa cause est retirée par construction.
 
-**Résidu signalé, non traité.** Deux fichiers de jetons dorment encore dans
-`.storage/` : `header_ytube_music_player.json.bak_socs` (11 juin) et
-`header_ytube_music_player.json.oauth_bak` (5 juin). Le jeton vif a bien été
-supprimé au Step 6 ; ce sont ses sauvegardes. Ce sont des identifiants YouTube
-morts d'une intégration retirée — hors périmètre de ce step, à supprimer ou à
-conserver sur décision du propriétaire.
+**Résidu traité le même jour.** Deux fichiers de jetons dormaient encore dans
+`.storage/`, sauvegardes du jeton vif supprimé au Step 6 :
+
+| Fichier | Date | Contenu | Mode |
+|---|---|---|---|
+| `header_ytube_music_player.json.bak_socs` | 11 juin | en-têtes complets, dont `cookie` et `authorization` | `-rw-r--r--` |
+| `header_ytube_music_player.json.oauth_bak` | 5 juin | `access_token` (expiré le 2026-06-05) **et `refresh_token`**, scope `.../auth/youtube` | `-rw-r--r--` |
+
+Des identifiants valides sans consommateur, et **lisibles par tous** sur
+l'hôte. Même hygiène que les trois JWT `bleuenn_url_*` révoqués la veille.
+
+**Garde passée avant de retirer** : aucun consommateur vivant. `header_ytube`
+n'apparaît nulle part dans `tools/`, ni dans le `core.config_entries` vivant —
+seulement dans deux **sauvegardes** de ce fichier (instantanés de l'entrée
+supprimée) et dans le spec de ce chantier.
+
+Archivés puis retirés :
+
+```bash
+A=/opt/nivuus/home-manager/backups-retrait-ytube-20260905   # 0700, fichiers 0600
+sudo -n rm -f /opt/nivuus/home-manager/config/.storage/header_ytube_music_player.json.bak_socs \
+              /opt/nivuus/home-manager/config/.storage/header_ytube_music_player.json.oauth_bak
+```
+
+L'archive suit la convention du `backups-home-desk-20260905` voisin : dossier
+daté, frère de `config/`, root seul. Empreintes SHA-256 vérifiées identiques
+avant retrait. Après : plus aucun `header_ytube` dans `.storage/`,
+`check_config` **code 0**, les cinq lecteurs répondent, aucune en
+`unavailable`.
+
+> ⚠️ **Supprimer le fichier n'est pas révoquer le jeton.** Le `refresh_token`
+> reste valide **côté Google** jusqu'à révocation explicite : un
+> `refresh_token` ne porte pas de date d'expiration, contrairement à
+> l'`access_token` qui, lui, a expiré le 2026-06-05. La copie locale a
+> disparu ; l'autorisation, non. La révoquer se fait sur
+> <https://myaccount.google.com/permissions>, et n'appartient qu'au
+> propriétaire. Ce n'est **pas** une case de ce plan — c'est une hygiène de
+> compte, sans effet sur Music Assistant, qui utilise un cookie distinct
+> obtenu à la Task 5.
 
 - [x] **Step 3: Basculer le script du Supermix**
 
@@ -1633,6 +1666,8 @@ des échecs de métadonnées Wikipédia, tous deux étrangers à ce chantier.
    dépôt `ytube_music_player` désinstallé de HACS. C'était le dernier geste
    irréversible du chantier.
 3. **Le coût du retour arrière** a été écrit, tant qu'il est encore connu.
+4. **Les deux jetons morts retirés** de `.storage/`, après garde de
+   non-référencement — détail à la Task 10 Step 2.
 
 ### Vérifications de bout en bout, après le retrait
 
@@ -1651,6 +1686,30 @@ des échecs de métadonnées Wikipédia, tous deux étrangers à ce chantier.
 | erreurs HA depuis le retrait | aucune imputable au retrait |
 | conteneurs | `music-assistant` et `bgutil-pot-provider` *Up 35 hours*, `homeassistant` *Up 22 minutes* (démarrage de 10:17, antérieur au retrait) |
 | `make test` | **code 0**, les cinq suites `OK` |
+| jetons morts `header_ytube_*.bak` | **retirés** — archivés en 0600 sous `backups-retrait-ytube-20260905/`, SHA-256 vérifiées ; `check_config` reste à **code 0**, les cinq lecteurs répondent |
+
+### Les deux jetons morts, et ce que leur retrait ne fait pas
+
+`header_ytube_music_player.json.bak_socs` portait un jeu d'en-têtes complet
+(`cookie`, `authorization`) ; `.oauth_bak` portait un `access_token` expiré
+**et un `refresh_token`** de scope `.../auth/youtube`. Tous deux en
+`-rw-r--r--` : des identifiants valides, sans consommateur, lisibles par tous
+sur l'hôte.
+
+La garde a été passée avant de toucher quoi que ce soit : `header_ytube`
+n'apparaît dans aucun fichier vivant — ni dans `tools/`, ni dans le
+`core.config_entries` en service. Les seules occurrences sont dans deux
+sauvegardes de ce fichier et dans le spec.
+
+**Ce que le retrait ne fait pas :** il supprime la copie locale, **il ne
+révoque pas l'autorisation**. Un `refresh_token` reste valide côté Google
+jusqu'à révocation explicite — il ne porte pas de date d'expiration, à la
+différence de l'`access_token` qui, lui, avait expiré le 2026-06-05. La
+révocation se fait sur <https://myaccount.google.com/permissions> et
+n'appartient qu'au propriétaire. Elle est **sans effet sur Music Assistant**,
+qui s'authentifie par un cookie distinct obtenu à la Task 5 — et elle n'est
+volontairement **pas** une case de ce plan, pour ne pas bloquer l'archivage
+de `home-desk` sur une hygiène de compte.
 
 ### Ce qui n'a **pas** été fait, et pourquoi
 
@@ -1662,8 +1721,10 @@ des échecs de métadonnées Wikipédia, tous deux étrangers à ce chantier.
   assumée : le silence du prochain démarrage est **déduit**, pas observé.
 - **Aucun son rejoué.** Rien n'a été lancé sur les enceintes : le propriétaire
   a déjà validé, et rejouer aurait sonné chez lui sans prévenir.
-- **Les deux `header_ytube_music_player.json.*bak*` de `.storage/`** n'ont pas
-  été supprimés — jetons morts, hors périmètre du Step 2, laissés à décision.
+
+*Les deux `header_ytube_music_player.json.*bak*` figuraient d'abord dans cette
+liste, laissés à décision. Ils ont été retirés le même jour — section
+suivante.*
 
 ### Le cas du salon, mesuré sans rejouer
 
