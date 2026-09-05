@@ -24,7 +24,8 @@ USB = STACK / "docker-compose.usb.yml"
 DEV = STACK / "docker-compose.dev.yml"
 
 SERVICES = ("homeassistant", "docker-socket-proxy", "mosquitto",
-            "zigbee2mqtt", "otbr", "matterjs-server")
+            "zigbee2mqtt", "otbr", "matterjs-server",
+            "music-assistant", "bgutil-pot-provider")
 
 failures = []
 
@@ -40,7 +41,7 @@ main = yaml.safe_load(MAIN.read_text())
 # renommer le deploiement n'orpheline pas les conteneurs.
 check("nom de projet", main.get("name"), "home-manager")
 
-check("les six services sont declares", sorted(main["services"]),
+check("les huit services sont declares", sorted(main["services"]),
       sorted(SERVICES))
 
 # Aucun chemin de machine, dans aucun des deux fichiers deployes.
@@ -54,7 +55,8 @@ for label, path in (("main", MAIN), ("usb", USB)):
 for service, expected in (("homeassistant", "./config:/config"),
                           ("otbr", "./otbr:/var/lib/thread"),
                           ("zigbee2mqtt", "./zigbee2mqtt:/app/data"),
-                          ("matterjs-server", "./matter_js:/data")):
+                          ("matterjs-server", "./matter_js:/data"),
+                          ("music-assistant", "./music_assistant:/data")):
     check(f"{service}: donnees en relatif",
           expected in (main["services"][service].get("volumes") or []), True)
 
@@ -86,6 +88,18 @@ check("proxy: socket monte en lecture seule",
       in main["services"]["docker-socket-proxy"]["volumes"], True)
 check("proxy: exec refuse",
       main["services"]["docker-socket-proxy"]["environment"]["EXEC"], 0)
+
+# Le generateur de jetons PO n'ecoute que sur la boucle locale. Expose au LAN,
+# il offrirait a quiconque un generateur de jetons YouTube tournant sous
+# l'identite de la maison.
+check("po token: ecoute limitee a la boucle locale",
+      main["services"]["bgutil-pot-provider"]["ports"],
+      ["127.0.0.1:4416:4416"])
+
+# MA sert ses flux aux enceintes depuis le port 8097 : en reseau bridge il leur
+# annoncerait une adresse qu'elles ne savent pas joindre.
+check("music-assistant: reseau de l'hote",
+      main["services"]["music-assistant"].get("network_mode"), "host")
 
 # Home Assistant ne monte plus le socket Docker brut : il passe par le proxy.
 ha_volumes = str(main["services"]["homeassistant"].get("volumes"))

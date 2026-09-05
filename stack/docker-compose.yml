@@ -1,4 +1,4 @@
-# Package Nivuus home-manager — les six services de la domotique.
+# Package Nivuus home-manager — les huit services de la domotique.
 #
 # Ils vivaient dans trois fichiers, un marketplace et un `docker run` oublie :
 # docker-compose.yml (HA, otbr, zigbee2mqtt), docker-socket-proxy/ (le proxy),
@@ -8,6 +8,11 @@
 # Reunir mosquitto ici supprime une dependance circulaire reelle : Home
 # Assistant lancait le broker dont Home Assistant lui-meme depend, et
 # zigbee2mqtt avec lui. Si HA ne demarrait pas, la domotique ne remontait pas.
+#
+# Music Assistant et son generateur de jetons PO (Proof of Origin) suivent le
+# meme principe : ce sont des services dont Home Assistant depend, et les
+# laisser en dehors reintroduirait la dependance circulaire que ce package
+# supprime.
 name: home-manager
 
 services:
@@ -155,3 +160,45 @@ services:
     volumes:
       - ./matter_js:/data
     command: ["--storage-path", "/data", "--primary-interface", "${BACKBONE_IF}"]
+
+  # Music Assistant. Il appartient a ce package pour la meme raison que
+  # mosquitto : c'est un service dont Home Assistant depend, et le laisser au
+  # docker_marketplace de HA reintroduirait la dependance circulaire que ce
+  # package existe pour supprimer.
+  #
+  # network_mode: host n'est pas decoratif. MA sert ses flux audio aux
+  # enceintes depuis le port 8097 ; en reseau bridge il leur annoncerait une
+  # adresse de conteneur qu'elles ne savent pas joindre, et la lecture
+  # echouerait sans message clair.
+  music-assistant:
+    container_name: music-assistant
+    image: ghcr.io/music-assistant/server:latest
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./music_assistant:/data
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      LOG_LEVEL: info
+
+  # Generateur de jetons « Proof of Origin » exige par YouTube. MA verifie que
+  # cette URL repond au demarrage du fournisseur et leve LoginFailed sinon :
+  # le service n'est pas optionnel.
+  #
+  # Publie sur la SEULE boucle locale, comme docker-socket-proxy : c'est un
+  # rouage interne de MA. L'image n'expose que -p/--port : le serveur ecoute
+  # deja toutes les interfaces a l'interieur du conteneur, et c'est la
+  # publication en boucle locale qui restreint, pas un flag de commande.
+  #
+  # Le tag suit `latest` DELIBEREMENT, et c'est l'inverse du reflexe. MA
+  # installe le client bgutil-ytdlp-pot-provider SANS VERSION a chaque
+  # demarrage du fournisseur (« Google breaks things quite often », dit son
+  # code) : le client suit donc latest, et epingler le serveur garantirait la
+  # derive entre les deux, que bgutil refuse. C'est le pin qui casse.
+  bgutil-pot-provider:
+    container_name: bgutil-pot-provider
+    image: brainicism/bgutil-ytdlp-pot-provider:latest
+    restart: unless-stopped
+    init: true
+    ports:
+      - "127.0.0.1:4416:4416"

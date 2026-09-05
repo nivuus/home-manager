@@ -15,6 +15,21 @@
   Assistant. Avant, HA lançait le broker dont HA dépend : si HA ne démarrait
   pas, ni le broker ni zigbee2mqtt ne remontaient. Le hook d'activation
   démarre le broker en premier pour la même raison.
+- **Music Assistant appartient à ce package**, pour la raison qui a fait
+  reprendre mosquitto : c'est un service dont Home Assistant dépend. Il
+  remplace `ytube_music_player` depuis le 2026-09-03.
+- **Le tag de `bgutil-pot-provider` suit `latest`, à dessein.** Épingler
+  serait le réflexe et serait l'erreur : MA installe le client
+  `bgutil-ytdlp-pot-provider` **sans version** à chaque démarrage du
+  fournisseur YouTube Music (« Google breaks things quite often », dit son
+  code), et bgutil exige que client et serveur s'accordent. Épingler le
+  serveur garantit donc la dérive. Le service n'est pas optionnel : MA teste
+  son URL au démarrage et lève `LoginFailed` si elle ne répond pas.
+- **Les lecteurs Music Assistant sont préfixés `musique_`.** Ils sont bâtis
+  sur des entités Cast qui existent toujours ; sans préfixe explicite,
+  l'intégration `music_assistant` créerait des `media_player.enceinte_cuisine_2`
+  imprévisibles — le même piège que les héros du wallpanel, documenté dans
+  `config/configuration.yaml`.
 - **`matterjs-server`** (image `ghcr.io/matter-js/matterjs-server`) remplace
   `matter-server` (`python-matter-server`) depuis juillet 2026. Ne pas
   confondre : le second n'existe plus que comme conteneur arrêté sur l'hôte de

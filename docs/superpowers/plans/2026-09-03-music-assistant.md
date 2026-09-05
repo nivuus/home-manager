@@ -64,7 +64,7 @@ Aucune écriture en production. Produit les outils dont six tâches dépendent.
   → imprime un tableau JSON des résultats, un par message. Lève `SystemExit`
   au premier échec.
 
-- [ ] **Step 1: Poser la variable et créer le venv**
+- [x] **Step 1: Poser la variable et créer le venv**
 
 ```bash
 export SCRATCH=/tmp/user/0/claude-0/-home-mallanic-Projects-Nivuus-packages-home-manager/32c35198-ec87-4120-a49b-26bc01512a95/scratchpad
@@ -75,7 +75,7 @@ python3 -m venv "$SCRATCH/venv"
 
 Attendu : un numéro de version (17.1 au moment de l'écriture).
 
-- [ ] **Step 2: Extraire les identifiants HA**
+- [x] **Step 2: Extraire les identifiants HA**
 
 Le jeton longue durée existe déjà, utilisé par `TOOLS/haws.py` et
 `TOOLS/wallpanel/build.py`. Il est lu dans `.mcp.json`, pas recréé.
@@ -90,7 +90,7 @@ sudo -n chown $(id -u):$(id -g) "$SCRATCH/ha.json"
 chmod 600 "$SCRATCH/ha.json"
 ```
 
-- [ ] **Step 3: Écrire le client websocket**
+- [x] **Step 3: Écrire le client websocket**
 
 ```python
 #!/usr/bin/env python3
@@ -122,7 +122,7 @@ if __name__ == "__main__":
     print(json.dumps(asyncio.run(call(json.loads(sys.argv[1]))), ensure_ascii=False))
 ```
 
-- [ ] **Step 4: Vérifier l'accès en lecture**
+- [x] **Step 4: Vérifier l'accès en lecture**
 
 ```bash
 "$SCRATCH/venv/bin/python" "$SCRATCH/hareg.py" '[{"type":"config/entity_registry/list"}]' \
@@ -146,7 +146,7 @@ Seule tâche entièrement dans le dépôt, seule tâche commitée à ce stade.
 - Produces: services `music-assistant` et `bgutil-pot-provider` dans
   `main["services"]`, consommés par la Task 2.
 
-- [ ] **Step 1: Écrire le test qui échoue**
+- [x] **Step 1: Écrire le test qui échoue**
 
 Dans `tests/test_compose_portable.py`, remplacer la constante `SERVICES` :
 
@@ -174,13 +174,13 @@ check("music-assistant: reseau de l'hote",
       main["services"]["music-assistant"].get("network_mode"), "host")
 ```
 
-- [ ] **Step 2: Lancer le test pour vérifier qu'il échoue**
+- [x] **Step 2: Lancer le test pour vérifier qu'il échoue**
 
 Run: `python3 tests/test_compose_portable.py`
 Expected: FAIL — `les six services sont declares: got [...], want [...]` puis
 un `KeyError: 'bgutil-pot-provider'`.
 
-- [ ] **Step 3: Ajouter les deux services**
+- [x] **Step 3: Ajouter les deux services**
 
 À la fin de `stack/docker-compose.yml` :
 
@@ -210,8 +210,9 @@ un `KeyError: 'bgutil-pot-provider'`.
   # le service n'est pas optionnel.
   #
   # Publie sur la SEULE boucle locale, comme docker-socket-proxy : c'est un
-  # rouage interne de MA. Le --host 0.0.0.0 ne concerne que l'interieur du
-  # conteneur, sans quoi la publication ne joindrait rien.
+  # rouage interne de MA. L'image n'expose que -p/--port : le serveur ecoute
+  # deja toutes les interfaces a l'interieur du conteneur, et c'est la
+  # publication en boucle locale qui restreint, pas un flag de commande.
   #
   # Le tag suit `latest` DELIBEREMENT, et c'est l'inverse du reflexe. MA
   # installe le client bgutil-ytdlp-pot-provider SANS VERSION a chaque
@@ -225,15 +226,14 @@ un `KeyError: 'bgutil-pot-provider'`.
     init: true
     ports:
       - "127.0.0.1:4416:4416"
-    command: ["--host", "0.0.0.0"]
 ```
 
-- [ ] **Step 4: Lancer la suite complète**
+- [x] **Step 4: Lancer la suite complète**
 
 Run: `make test`
 Expected: les cinq suites passent, dont `test_compose_portable: OK`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add stack/docker-compose.yml tests/test_compose_portable.py
@@ -259,14 +259,14 @@ Claude-Session: https://claude.ai/code/session_018ubH53NdfL4FrJnqGmTvnG"
 - Produces: MA joignable sur `http://127.0.0.1:8095`, PO provider sur
   `http://127.0.0.1:4416/ping`.
 
-- [ ] **Step 1: Sauvegarder le compose de production**
+- [x] **Step 1: Sauvegarder le compose de production**
 
 ```bash
 sudo -n cp -a /opt/nivuus/home-manager/docker-compose.yml \
   /opt/nivuus/home-manager/docker-compose.yml.backup-music-assistant-20260903
 ```
 
-- [ ] **Step 2: Déposer le nouveau compose**
+- [x] **Step 2: Déposer le nouveau compose**
 
 `install.py` n'est **pas** utilisé (voir Global Constraints).
 
@@ -276,7 +276,7 @@ sudo -n cp /home/mallanic/Projects/Nivuus/packages/home-manager/stack/docker-com
 sudo -n grep -c "" /opt/nivuus/home-manager/docker-compose.yml
 ```
 
-- [ ] **Step 3: Vérifier que la pile reste cohérente avant de démarrer quoi que ce soit**
+- [x] **Step 3: Vérifier que la pile reste cohérente avant de démarrer quoi que ce soit**
 
 ```bash
 cd /opt/nivuus/home-manager && sudo -n docker compose config --services | sort
@@ -287,14 +287,14 @@ Le `.env` porte encore la surcouche de dev : si cette commande échoue sur un
 fichier manquant, **arrêter** et vérifier que `docker-compose.dev.yml` est
 toujours présent dans `DEPLOY`.
 
-- [ ] **Step 4: Démarrer les deux nouveaux services seulement**
+- [x] **Step 4: Démarrer les deux nouveaux services seulement**
 
 ```bash
 cd /opt/nivuus/home-manager && sudo -n docker compose up -d music-assistant bgutil-pot-provider
 sudo -n docker ps --filter name=music-assistant --filter name=bgutil --format '{{.Names}}\t{{.Status}}'
 ```
 
-- [ ] **Step 5: Vérifier les deux points d'entrée**
+- [x] **Step 5: Vérifier les deux points d'entrée**
 
 ```bash
 curl -s -o /dev/null -w "MA 8095 : HTTP %{http_code}\n" http://127.0.0.1:8095/
@@ -303,7 +303,7 @@ curl -s -o /dev/null -w "PO 4416 : HTTP %{http_code}\n" http://127.0.0.1:4416/pi
 
 Expected : `HTTP 200` pour les deux.
 
-- [ ] **Step 6: Vérifier que le PO provider n'est PAS joignable depuis le LAN**
+- [x] **Step 6: Vérifier que le PO provider n'est PAS joignable depuis le LAN**
 
 ```bash
 IP=$(ip -4 addr show scope global | grep -oP '(?<=inet )\d+\.\d+\.\d+\.\d+' | head -1)
@@ -313,7 +313,7 @@ curl -s -m 3 -o /dev/null -w "depuis $IP : %{http_code}\n" "http://$IP:4416/ping
 Expected : refus de connexion, ou `000`. Une réponse `200` ici est une
 régression de sécurité : revenir à la Task 1.
 
-- [ ] **Step 7: Lire les journaux de MA**
+- [x] **Step 7: Lire les journaux de MA**
 
 ```bash
 sudo -n docker logs music-assistant 2>&1 | tail -30
@@ -340,14 +340,14 @@ trois dashboards, `homeassistant.exposed_entities`, `config/packages/`, ni par
 - Produces: `media_player.bar_de_son` et `media_player.enceinte_chambre`,
   consommés par les Tasks 4 (Step 3) et 6.
 
-- [ ] **Step 1: Sauvegarder le registre**
+- [x] **Step 1: Sauvegarder le registre**
 
 ```bash
 sudo -n cp -a /opt/nivuus/home-manager/config/.storage/core.entity_registry \
   /opt/nivuus/home-manager/config/.storage/core.entity_registry.backup-music-assistant-20260903
 ```
 
-- [ ] **Step 2: Supprimer les trois enceintes mortes**
+- [x] **Step 2: Supprimer les trois enceintes mortes**
 
 ```bash
 "$SCRATCH/venv/bin/python" "$SCRATCH/hareg.py" '[
@@ -360,7 +360,7 @@ sudo -n cp -a /opt/nivuus/home-manager/config/.storage/core.entity_registry \
 `enceinte_bureau_2` est un **groupe Cast**, pas une enceinte — c'est bien une
 suppression d'entité, pas un débranchement de matériel.
 
-- [ ] **Step 3: Supprimer les 11 Play-Fi fantômes**
+- [x] **Step 3: Supprimer les 11 Play-Fi fantômes**
 
 `2379390371` est **absente de cette liste** : c'est la vraie barre de son,
 UUID `25992067-183e-44d4-f36e-df1b7f580aec`, vivante à 192.168.0.142.
@@ -381,7 +381,7 @@ UUID `25992067-183e-44d4-f36e-df1b7f580aec`, vivante à 192.168.0.142.
 ]'
 ```
 
-- [ ] **Step 4: Réactiver et renommer la barre de son**
+- [x] **Step 4: Réactiver et renommer la barre de son**
 
 ```bash
 "$SCRATCH/venv/bin/python" "$SCRATCH/hareg.py" '[
@@ -393,7 +393,7 @@ UUID `25992067-183e-44d4-f36e-df1b7f580aec`, vivante à 192.168.0.142.
 ]'
 ```
 
-- [ ] **Step 5: Renommer l'enceinte de la chambre**
+- [x] **Step 5: Renommer l'enceinte de la chambre**
 
 `media_player.bureau` est physiquement l'enceinte de la **chambre** (device
 « Enceinte Chambre », Google Home Mini, 192.168.0.202). Le renommage n'est
@@ -407,7 +407,7 @@ possible qu'après le Step 2, qui libère le nom.
 ]'
 ```
 
-- [ ] **Step 6: Vérifier l'état final**
+- [x] **Step 6: Vérifier l'état final**
 
 ```bash
 "$SCRATCH/venv/bin/python" "$SCRATCH/hareg.py" '[{"type":"config/entity_registry/list"}]' \
@@ -442,12 +442,12 @@ lecteurs **et** les moteurs IA/TTS que réclame AI Radio.
 - Consumes: MA joignable (Task 2).
 - Produces: les 4 lecteurs HA visibles dans MA, nommés à la Task 6.
 
-- [ ] **Step 1: Ouvrir l'interface de MA**
+- [x] **Step 1: Ouvrir l'interface de MA**
 
 `http://127.0.0.1:8095` — ou l'adresse LAN du serveur depuis un poste.
 Premier lancement : MA demande de créer le compte administrateur local.
 
-- [ ] **Step 2: Ajouter le plugin Home Assistant**
+- [x] **Step 2: Ajouter le plugin Home Assistant**
 
 Paramètres → Plugins → Ajouter → **Home Assistant**.
 URL demandée : `https://home.allanic.me`.
@@ -456,7 +456,7 @@ URL demandée : `https://home.allanic.me`.
 demande une connexion dans le navigateur — c'est la première des trois
 étapes qui ne peuvent pas être automatisées.
 
-- [ ] **Step 3: Ajouter le provider Home Assistant Media Players**
+- [x] **Step 3: Ajouter le provider Home Assistant Media Players**
 
 Paramètres → Fournisseurs → Ajouter → **Home Assistant Media Players**.
 Cocher exactement ces quatre entités, et aucune autre :
@@ -474,7 +474,7 @@ mortes, réactivé la barre de son et renommé l'enceinte de la chambre.
 Ne cocher **ni** `media_player.maison` (groupe Cast cassé), **ni** les
 téléviseurs, **ni** les tablettes.
 
-- [ ] **Step 4: Vérifier que MA voit les lecteurs**
+- [x] **Step 4: Vérifier que MA voit les lecteurs**
 
 ```bash
 sudo -n docker logs music-assistant 2>&1 | grep -i "player" | tail -20
@@ -493,7 +493,7 @@ Expected : les lecteurs HA apparaissent. Les voir aussi dans l'onglet
 - Consumes: PO provider joignable (Task 2).
 - Produces: une bibliothèque musicale dans MA, consommée par la Task 8.
 
-- [ ] **Step 1: Extraire le cookie**
+- [x] **Step 1: Extraire le cookie**
 
 **Étape opérateur**, la deuxième des trois. Dans une fenêtre de navigation
 **privée** : se connecter à `https://music.youtube.com`, ouvrir les outils de
@@ -504,7 +504,7 @@ elle doit contenir `__Secure-3PAPISID`.
 La navigation privée n'est pas un détail : un cookie de session ordinaire est
 invalidé dès que le navigateur se déconnecte ou renouvelle sa session.
 
-- [ ] **Step 2: Ajouter le fournisseur**
+- [x] **Step 2: Ajouter le fournisseur**
 
 Paramètres → Fournisseurs → Ajouter → **YouTube Music**.
 
@@ -514,7 +514,7 @@ Paramètres → Fournisseurs → Ajouter → **YouTube Music**.
 | Cookie | la valeur copiée au Step 1 |
 | PO Token server URL | **laisser vide** — le défaut `http://127.0.0.1:4416` correspond au bind |
 
-- [ ] **Step 3: Vérifier que la configuration passe**
+- [x] **Step 3: Vérifier que la configuration passe**
 
 ```bash
 sudo -n docker logs music-assistant 2>&1 | tail -40
@@ -527,12 +527,12 @@ Expected : pas de `LoginFailed`. Deux échecs à distinguer :
 - une erreur d'authentification → le cookie est mauvais ou expiré, reprendre
   le Step 1 dans une fenêtre privée neuve.
 
-- [ ] **Step 4: Vérifier la bibliothèque**
+- [x] **Step 4: Vérifier la bibliothèque**
 
 Dans l'UI, onglet *Musique* : les playlists du compte apparaissent, dont
 « Mon supermix ». Noter son URI MA — elle sert à la Task 10.
 
-- [ ] **Step 5: Régler la langue et le mélange**
+- [x] **Step 5: Régler la langue et le mélange**
 
 Reprise de l'ancienne configuration : langue **`fr`**, lecture aléatoire
 activée par défaut sur les files, limite de file **25**.
@@ -547,7 +547,7 @@ activée par défaut sur les files, limite de file **25**.
 - Consumes: le provider de la Task 4.
 - Produces: 5 lecteurs MA, dont le groupe, consommés par la Task 7.
 
-- [ ] **Step 1: Renommer les quatre lecteurs dans MA**
+- [x] **Step 1: Renommer les quatre lecteurs dans MA**
 
 Paramètres → Lecteurs. Le nom MA commande l'`entity_id` que créera
 l'intégration côté HA : le préfixe `Musique` est ce qui empêche la collision
@@ -560,7 +560,7 @@ avec les entités Cast sous-jacentes, qui gardent leurs noms.
 | `media_player.bureau` | `Musique Chambre` |
 | `media_player.google_home_salle_de_bain` | `Musique Salle de bain` |
 
-- [ ] **Step 2: Créer le groupe**
+- [x] **Step 2: Créer le groupe**
 
 Paramètres → Lecteurs → Créer un groupe. Nom : **`Musique Maison`**.
 Membres : les quatre lecteurs ci-dessus.
@@ -570,7 +570,7 @@ enceintes du bureau ont disparu. La synchronisation est celle de MA sur quatre
 flux HTTP séparés, conséquence assumée de la contrainte « uniquement les
 providers HA » : un léger décalage entre pièces est possible.
 
-- [ ] **Step 3: Vérifier**
+- [x] **Step 3: Vérifier**
 
 L'onglet *Lecteurs* montre cinq entrées : les quatre pièces et `Musique Maison`.
 
@@ -586,14 +586,14 @@ L'onglet *Lecteurs* montre cinq entrées : les quatre pièces et `Musique Maison
 - Produces: les `entity_id` `media_player.musique_*`, consommés par les
   Tasks 10 à 12.
 
-- [ ] **Step 1: Ajouter l'intégration**
+- [x] **Step 1: Ajouter l'intégration**
 
 Dans HA : Paramètres → Appareils et services → Ajouter une intégration →
 **Music Assistant**. L'intégration est **core** depuis HA 2024.12 — ne pas
 passer par HACS. Elle découvre le serveur local ; sinon saisir
 `http://127.0.0.1:8095`.
 
-- [ ] **Step 2: Relever les `entity_id` réellement créés**
+- [x] **Step 2: Relever les `entity_id` réellement créés**
 
 ```bash
 "$SCRATCH/venv/bin/python" "$SCRATCH/hareg.py" '[{"type":"config/entity_registry/list"}]' \
@@ -609,7 +609,7 @@ C'est ici que se joue le piège documenté dans `configuration.yaml` : si un
 `entity_id` porte un suffixe `_2`, il **doit** être corrigé au Step 3, sinon
 la bascule des Tasks 10 à 12 pointera dans le vide.
 
-- [ ] **Step 3: Fixer les cinq `entity_id`**
+- [x] **Step 3: Fixer les cinq `entity_id`**
 
 Remplacer les `<id>` par les valeurs relevées au Step 2.
 
@@ -623,7 +623,7 @@ Remplacer les `<id>` par les valeurs relevées au Step 2.
 ]'
 ```
 
-- [ ] **Step 4: Vérifier les cinq entités**
+- [x] **Step 4: Vérifier les cinq entités**
 
 ```bash
 "$SCRATCH/venv/bin/python" "$SCRATCH/hareg.py" '[{"type":"config/entity_registry/list"}]' \
@@ -691,7 +691,7 @@ poursuivre.
 **Interfaces:**
 - Consumes: le plugin Home Assistant de la Task 4 (moteurs IA et TTS).
 
-- [ ] **Step 1: AI Radio**
+- [x] **Step 1: AI Radio**
 
 Paramètres → Plugins → Ajouter → **AI Radio**.
 
@@ -705,12 +705,12 @@ Le plugin refuse de dépasser son premier écran sans un moteur IA **et** un
 moteur TTS : si les listes sont vides, le plugin Home Assistant de la Task 4
 n'est pas correctement connecté.
 
-- [ ] **Step 2: Party**
+- [x] **Step 2: Party**
 
 Paramètres → Plugins → Ajouter → **Party**. Lecteur : `Musique Maison`.
 Une instance par lecteur est possible ; une seule sur le groupe suffit.
 
-- [ ] **Step 3: Music Quiz**
+- [x] **Step 3: Music Quiz**
 
 Paramètres → Plugins → Ajouter → **Music Quiz**. Lecteur : `Musique Maison`.
 
@@ -722,7 +722,7 @@ Paramètres → Plugins → Ajouter → **LastFM Scrobbler**. Choisir **Last.FM*
 **Étape opérateur**, la troisième et dernière : l'autorisation OAuth Last.fm
 se fait dans un navigateur.
 
-- [ ] **Step 5: Vérifier**
+- [x] **Step 5: Vérifier**
 
 ```bash
 sudo -n docker logs music-assistant 2>&1 | tail -40
@@ -744,7 +744,7 @@ Expected : les cinq plugins chargés, aucun traceback.
 **Interfaces:**
 - Consumes: `media_player.musique_maison` et `musique_*` de la Task 7.
 
-- [ ] **Step 1: Sauvegarder les trois fichiers**
+- [x] **Step 1: Sauvegarder les trois fichiers**
 
 ```bash
 C=/opt/nivuus/home-manager/config
@@ -758,7 +758,7 @@ done
 Dans HA : Paramètres → Appareils et services → **yTubeMusic** → Supprimer.
 Puis dans HACS : dépôt `ytube_music_player` → Supprimer.
 
-- [ ] **Step 3: Basculer le script du Supermix**
+- [x] **Step 3: Basculer le script du Supermix**
 
 Dans `scripts.yaml`, remplacer le corps de `lancer_supermix_maison`. Le
 `select_source` disparaît : il servait à choisir l'enceinte, ce que le lecteur
@@ -783,7 +783,7 @@ Si l'URI relevée à la Task 5 Step 4 diffère de l'identifiant brut, utiliser
 celle-là : MA suffixe les identifiants de playlist YouTube d'un délimiteur
 (`YT_PLAYLIST_ID_DELIMITER`) parce qu'ils ne sont pas uniques entre comptes.
 
-- [ ] **Step 4: Basculer le déclencheur du capteur *Wallpanel héros***
+- [x] **Step 4: Basculer le déclencheur du capteur *Wallpanel héros***
 
 Dans `configuration.yaml`, dans la liste `entity_id` du `trigger` (vers la
 ligne 222), remplacer les deux premières lignes :
@@ -800,7 +800,7 @@ ligne 222), remplacer les deux premières lignes :
 (`media_player.ytube_music_player` et `media_player.maison` sortent, les
 quatre `musique_*` entrent ; le reste de la liste est inchangé.)
 
-- [ ] **Step 5: Basculer la macro `media_en_cours()`**
+- [x] **Step 5: Basculer la macro `media_en_cours()`**
 
 Dans `custom_templates/wallpanel.jinja`, lignes 116-120 :
 
@@ -814,7 +814,7 @@ Dans `custom_templates/wallpanel.jinja`, lignes 116-120 :
 {%- endmacro -%}
 ```
 
-- [ ] **Step 6: Supprimer le code et le jeton de l'intégration**
+- [x] **Step 6: Supprimer le code et le jeton de l'intégration**
 
 ```bash
 C=/opt/nivuus/home-manager/config
@@ -822,7 +822,7 @@ sudo -n rm -rf "$C/custom_components/ytube_music_player"
 sudo -n rm -f "$C/.storage/header_ytube_music_player.json"
 ```
 
-- [ ] **Step 7: Vérifier la configuration puis recharger**
+- [x] **Step 7: Vérifier la configuration puis recharger**
 
 ```bash
 sudo -n docker exec homeassistant hass --script check_config -c /config 2>&1 | tail -20
@@ -836,7 +836,7 @@ curl -s -X POST -H "Authorization: Bearer $TOK" https://home.allanic.me/api/serv
 curl -s -X POST -H "Authorization: Bearer $TOK" https://home.allanic.me/api/services/template/reload
 ```
 
-- [ ] **Step 8: Vérifier que la macro rend bien**
+- [x] **Step 8: Vérifier que la macro rend bien**
 
 ```bash
 TOK=$(python3 -c "import json;print(json.load(open('$SCRATCH/ha.json'))['token'])")
@@ -847,7 +847,7 @@ curl -s -X POST -H "Authorization: Bearer $TOK" -H "Content-Type: application/js
 
 Expected : `true` ou `false`, **pas** une erreur de template.
 
-- [ ] **Step 9: Vérifier qu'il ne reste aucune référence vivante**
+- [x] **Step 9: Vérifier qu'il ne reste aucune référence vivante**
 
 ```bash
 C=/opt/nivuus/home-manager/config
@@ -872,7 +872,7 @@ Expected : `0` partout.
 **Interfaces:**
 - Consumes: `media_player.musique_*` de la Task 7.
 
-- [ ] **Step 1: Sauvegarder**
+- [x] **Step 1: Sauvegarder**
 
 ```bash
 sudo -n cp -a /opt/nivuus/HomeAssistant/data/tools/wallpanel-app/src/pieces.ts \
@@ -881,7 +881,7 @@ sudo -n cp -a /opt/nivuus/home-manager/config/www/wallpanel \
   /opt/nivuus/home-manager/config/www/wallpanel.backup-music-assistant-20260903
 ```
 
-- [ ] **Step 2: Salon — remplacer le bloc `sources` (vers la ligne 211)**
+- [x] **Step 2: Salon — remplacer le bloc `sources` (vers la ligne 211)**
 
 ```ts
     sources: [
@@ -905,7 +905,7 @@ sudo -n cp -a /opt/nivuus/home-manager/config/www/wallpanel \
       },
 ```
 
-- [ ] **Step 3: Bureau — remplacer le bloc `sources` (vers la ligne 315)**
+- [x] **Step 3: Bureau — remplacer le bloc `sources` (vers la ligne 315)**
 
 Le bureau n'a plus d'enceinte : sa source « Musique » commande la barre de son
 du salon, et gagne le « Multiroom » qu'il n'avait pas.
@@ -933,7 +933,7 @@ du salon, et gagne le « Multiroom » qu'il n'avait pas.
     ],
 ```
 
-- [ ] **Step 4: Cuisine — remplacer le bloc `sources` (vers la ligne 407)**
+- [x] **Step 4: Cuisine — remplacer le bloc `sources` (vers la ligne 407)**
 
 ```ts
     sources: [
@@ -958,7 +958,7 @@ du salon, et gagne le « Multiroom » qu'il n'avait pas.
     ],
 ```
 
-- [ ] **Step 5: Lancer les tests de l'application**
+- [x] **Step 5: Lancer les tests de l'application**
 
 ```bash
 cd /opt/nivuus/HomeAssistant/data/tools/wallpanel-app && sudo -n npm run test
@@ -967,13 +967,13 @@ cd /opt/nivuus/HomeAssistant/data/tools/wallpanel-app && sudo -n npm run test
 Expected : la suite `vitest` passe. Un test qui référence
 `media_player.ytube_music_player` doit être mis à jour vers `musique_salon`.
 
-- [ ] **Step 6: Reconstruire**
+- [x] **Step 6: Reconstruire**
 
 ```bash
 cd /opt/nivuus/HomeAssistant/data/tools/wallpanel-app && sudo -n npm run build
 ```
 
-- [ ] **Step 7: Vérifier que le généré est propre**
+- [x] **Step 7: Vérifier que le généré est propre**
 
 ```bash
 echo -n "ytube dans le bundle : "
@@ -1000,7 +1000,7 @@ puis déployé par `build.py --deploy`.
 **Interfaces:**
 - Consumes: `media_player.musique_*` de la Task 7.
 
-- [ ] **Step 1: Sauvegarder**
+- [x] **Step 1: Sauvegarder**
 
 ```bash
 sudo -n cp -a /opt/nivuus/HomeAssistant/data/tools/wallpanel/rooms.py \
@@ -1011,13 +1011,13 @@ for p in salon bureau cuisine; do
 done
 ```
 
-- [ ] **Step 2: Retirer le sélecteur de source de `_lecteur_media`**
+- [x] **Step 2: Retirer le sélecteur de source de `_lecteur_media`**
 
 Ligne 29 de `rooms.py`, dans le dict rendu par `_lecteur_media` : supprimer la
 ligne `"source": "icon",`. Elle affichait le sélecteur d'enceinte de
 `ytube_music_player`, que MA n'a pas — un lecteur MA par pièce le remplace.
 
-- [ ] **Step 3: Basculer `_MEDIA` (lignes 41-53)**
+- [x] **Step 3: Basculer `_MEDIA` (lignes 41-53)**
 
 L'exclusivité entre cartes est conservée : musique de pièce > multiroom > TV.
 
@@ -1042,7 +1042,7 @@ et de « Supermix (YTM) », ainsi que la docstring de `_lecteur_media` dont la
 dernière ligne dit `YTM > media_player.maison > télévision` — elle devient
 `musique de pièce > musique_maison > télévision`.
 
-- [ ] **Step 4: Générer sans déployer**
+- [x] **Step 4: Générer sans déployer**
 
 ```bash
 cd /opt/nivuus/HomeAssistant/data && sudo -n python3 tools/wallpanel/build.py
@@ -1052,7 +1052,7 @@ sudo -n grep -rc "ytube" tools/wallpanel/genere/ | grep -v ":0" || echo "aucun"
 
 Expected : `aucun`.
 
-- [ ] **Step 5: Déployer les trois dashboards**
+- [x] **Step 5: Déployer les trois dashboards**
 
 `build.py --deploy` valide que **toute** entité utilisée existe réellement dans
 HA avant d'écrire, et abandonne sinon. C'est le filet de sécurité de cette
@@ -1064,7 +1064,7 @@ cd /opt/nivuus/HomeAssistant/data && sudo -n python3 tools/wallpanel/build.py --
 
 Expected : trois lignes de génération, aucun « DÉPLOIEMENT ABANDONNÉ ».
 
-- [ ] **Step 6: Vérifier les dashboards déployés**
+- [x] **Step 6: Vérifier les dashboards déployés**
 
 ```bash
 C=/opt/nivuus/home-manager/config/.storage
@@ -1089,7 +1089,7 @@ média doit apparaître, afficher la pochette, et ses commandes doivent agir.
 - Modify: `README.md` (tableau des services)
 - Modify: `CLAUDE.md` (section « Décisions à ne pas défaire »)
 
-- [ ] **Step 1: Compléter le tableau du README**
+- [x] **Step 1: Compléter le tableau du README**
 
 Sous `matterjs-server`, ajouter :
 
@@ -1101,7 +1101,7 @@ Sous `matterjs-server`, ajouter :
 Et corriger la phrase d'introduction : « Home Assistant et les **cinq**
 services dont il dépend » devient « et les **sept** services dont il dépend ».
 
-- [ ] **Step 2: Ajouter les trois décisions à `CLAUDE.md`**
+- [x] **Step 2: Ajouter les trois décisions à `CLAUDE.md`**
 
 Dans « Décisions à ne pas défaire », après le paragraphe sur mosquitto :
 
@@ -1123,15 +1123,21 @@ Dans « Décisions à ne pas défaire », après le paragraphe sur mosquitto :
   `config/configuration.yaml`.
 ```
 
-- [ ] **Step 3: Lancer la suite complète**
+- [x] **Step 3: Lancer la suite complète**
 
 ```bash
-make test NIVUUS_INSTALLER_DIR=$HOME/Projects/Nivuus/packages/installer
+make test NIVUUS_INSTALLER_DIR=/home/mallanic/Projects/Nivuus/packages/installer
 ```
 
 Expected : les cinq suites passent.
 
-- [ ] **Step 4: Commit**
+Le chemin est écrit en absolu à dessein : `$HOME` vaut `/root` dans les
+sessions d'agent, et un `NIVUUS_INSTALLER_DIR` inexistant ne lève rien —
+`sys.path.insert` l'accepte en silence et le test échoue plus loin sur un
+`ModuleNotFoundError: No module named 'packages'` qui ressemble à une
+régression du dépôt `installer`.
+
+- [x] **Step 4: Commit**
 
 ```bash
 git add README.md CLAUDE.md docs/superpowers/plans/2026-09-03-music-assistant.md
@@ -1184,3 +1190,106 @@ après aurait donné à MA des noms d'entités qui changent sous lui.
 La Task 8 est une **porte**, pas une étape : rien de ce qui suit n'est
 réversible à bon compte, et tout ce qui précède laisse la maison avec sa
 musique intacte.
+
+---
+
+## Journal d'exécution — relevé du 2026-09-04
+
+Cette section consigne l'état **mesuré**, pas l'état attendu. Elle existe
+parce que le plan a été exécuté par plusieurs sessions et que l'ordre des
+dépendances a été rompu.
+
+### L'inversion : les Tasks 11 et 12 ont précédé la porte de la Task 8
+
+Les Tasks 10 (sauf son Step 2), 11 et 12 ont été exécutées le 2026-09-04 par
+une session antérieure, **avant** la validation sonore de la Task 8, alors que
+le plan les en fait dépendre explicitement. Mesuré :
+
+- `tools/wallpanel-app/src/pieces.ts` : 36 occurrences `musique_*`, 0 `ytube` ;
+- bundle `config/www/wallpanel/wallpanel.js` reconstruit le 4 sept. à 01:01,
+  0 `ytube`, contient `musique_salon`, `musique_cuisine`, `musique_maison` ;
+- `tools/wallpanel/rooms.py` : 5 occurrences `musique_*`, 0 `ytube` ;
+- les trois `.storage/lovelace.wallpanel_{salon,bureau,cuisine}` : 0 `ytube`.
+
+Ces trois arbres (`TOOLS`) ne sont **pas versionnés dans ce dépôt** et portent
+trois chantiers empilés dont deux sont étrangers à Music Assistant. Leur tri
+revient au propriétaire, dans le cadre du futur package `home-desk`. Rien n'y
+a été commité ni nettoyé ici.
+
+Conséquence : la maison n'a plus de repli logiciel immédiat vers
+`ytube_music_player` — les YAML et le wallpanel pointent déjà tous sur
+`musique_*`. La porte de la Task 8 a donc perdu la moitié de sa fonction. Elle
+reste due : personne n'a encore entendu de son.
+
+### Ce qui est délibérément retenu
+
+**Task 10 Step 2 — retrait de l'entrée de configuration `ytube_music_player`
+et de son dépôt HACS.** Non exécuté, sciemment. Mesuré :
+
+- `config/custom_components/ytube_music_player/` : **supprimé** ;
+- l'entrée de configuration `01KTBX6VVRXYP6SK6KX58CE7GH` (`yTubeMusic`) :
+  **toujours présente**, et ses six entités répondent encore parce que Home
+  Assistant tourne depuis 6 jours et détient l'intégration en mémoire ;
+- HACS liste toujours `KoljaWindeler/ytube_music_player` en
+  `installed: true`, commit `8aa412f`, version `20260816.01`.
+
+C'est cette dernière ligne qui fait la décision : tant que HACS porte le dépôt,
+un retéléchargement plus un redémarrage restaurent l'intégration. Retirer
+l'entrée et le dépôt est le seul geste de tout le chantier qui ne se rejoue pas
+depuis la machine. Il attend donc la porte sonore, comme le plan l'exige.
+
+Corollaire à ne pas perdre : **au prochain redémarrage de Home Assistant,
+l'entrée `yTubeMusic` échouera au chargement**, son code n'étant plus sur le
+disque. C'est bruyant mais sans conséquence — aucun YAML, dashboard ni
+wallpanel ne la référence plus.
+
+### Vérifications refaites de bout en bout le 2026-09-04
+
+| Point | Mesure |
+|---|---|
+| compose déployé vs dépôt | identiques (`diff` vide) |
+| services déclarés | les 8, `music-assistant` et `bgutil-pot-provider` inclus |
+| conteneurs | `music-assistant` et `bgutil-pot-provider` *Up 24 hours* |
+| MA `http://127.0.0.1:8095` | HTTP 200 |
+| PO `http://127.0.0.1:4416/ping` | HTTP 200 |
+| PO exposé au LAN ? | non — `docker port` donne `4416/tcp -> 127.0.0.1:4416`, `ss` confirme un seul `LISTEN 127.0.0.1:4416` |
+| registre : `playfi*` fantômes | aucune restante |
+| registre : `bar_de_son`, `enceinte_chambre` | présentes, actives |
+| registre : les 5 `media_player.musique_*` | présentes, aucun suffixe `_2` |
+| `ytube` dans les 5 YAML de `config/` | 0 partout |
+| macro `media_en_cours()` | rend `false`, pas une erreur de template |
+| `script.lancer_supermix_maison` | pointe `media_player.musique_maison`, URI `ytmusic--WVwemhvP://playlist/RDTMAK5uy_kset8DisdE7LSD4TNjEVvrKRTmG7a56sY🎵ytmusic--WVwemhvP` |
+| `make test` | les cinq suites passent |
+
+La vérification du Step 6 de la Task 2 a été faite par **inspection des
+bindings** (`docker port` et `ss -lntp`) plutôt que par un `curl` vers
+l'adresse LAN : c'est la même preuve en plus fort, et le `curl` sortant se
+heurtait au profil zsh de la machine.
+
+### État des fournisseurs et plugins de Music Assistant
+
+Relevé dans `music_assistant/settings.json` :
+
+- plugin **Home Assistant** (`hass`) : actif ;
+- provider **HA Media Players** (`hass_players`) : actif, exactement les quatre
+  entités prévues — `bar_de_son`, `enceinte_cuisine`, `enceinte_chambre`,
+  `google_home_salle_de_bain` ;
+- fournisseur **YouTube Music** (`ytmusic--WVwemhvP`) : actif, `username`,
+  `cookie` et `po_token_server_url` renseignés ; bibliothèque peuplée (le
+  journal montre le balayage de centaines d'artistes) ;
+- lecteurs nommés `Musique Salon`, `Musique Cuisine`, `Musique Chambre`,
+  `Musique Salle de bain`, plus le groupe `syncgroup_3h7twpvm` ;
+- `chromecast` : **désactivé**, conformément à la contrainte « uniquement les
+  providers HA » ;
+- plugins **AI Radio** (moteur IA, moteur TTS et ville chiffrés dans
+  `setup_data`, `timezone: Europe/Paris`), **Party** (`Musique Maison`,
+  accès invité et mode karaoké activés) et **Music Quiz** : actifs ;
+- langue : `core.metadata.language = fr_FR`.
+
+**Manque : le plugin LastFM Scrobbler** (Task 9 Step 4). Seul
+`lastfm_recommendations` est présent, et c'est un fournisseur de métadonnées
+livré par défaut, pas le scrobbler. L'autorisation OAuth Last.fm reste due.
+
+Le journal de MA ne porte aucun `LoginFailed`. Ses seules erreurs sont un
+`AttributeError: 'MusicAssistant' object has no attribute 'remote_access'` et
+des échecs de métadonnées Wikipédia, tous deux étrangers à ce chantier.
