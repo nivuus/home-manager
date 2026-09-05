@@ -53,6 +53,39 @@
 - **Le watchdog OTBR reste dehors**, désactivé en production le 2026-05-04 :
   213 redémarrages de passerelle par semaine pour zéro récupération.
 
+## Dette : la génération 1 des tablettes murales
+
+Trois pièces **ont l'air vivantes** et ne le sont plus depuis le 2026-08-02 :
+
+- `config/custom_templates/wallpanel.jinja` (163 lignes, 9 macros) ;
+- le bloc `template:` de `config/configuration.yaml` (vers la ligne 194), qui
+  déclare cinq capteurs `sensor.wallpanel_*` — dont un bloc `trigger:` à
+  **16 entités déclencheuses** ;
+- les trois dashboards `config/.storage/lovelace.wallpanel_{salon,bureau,cuisine}`.
+
+Mesuré le 2026-09-05 : aucune ligne de l'application des tablettes (package
+`home-desk`) ne lit ces capteurs. Les deux premiers portent désormais un
+commentaire daté sur place.
+
+**Pourquoi ce n'est pas fait.** Le retrait coûte une écriture manuelle dans
+`configuration.yaml` — que ce package protège par son `PRESERVED` et que
+`home-stock` a explicitement refusé de s'autoriser — la perte du filet de
+retour arrière du 2026-08-02, et la disparition de cinq entités du registre
+dont le renommage manuel `hero` / `heros` ne vit **que dans l'entity registry**
+et n'est pas reproductible.
+
+**Ce que ce n'est pas** : ce n'est pas une dette de `home-desk`. Un package ne
+nettoie pas la maison de quelqu'un d'autre ; c'est de l'hygiène du socle.
+
+**Reste dû, et bloqué.** L'archivage de
+`/opt/nivuus/HomeAssistant/data/tools/wallpanel/` (le générateur Lovelace de
+cette génération 1) est la Task 12 Steps 5-7 du plan `home-desk`. Elle est
+**conditionnée à la clôture du chantier music-assistant**, qui portait encore
+sept cases décochées au 2026-09-05 — dont sa propre Task 12 Step 7, « Vérifier
+à l'œil sur une tablette ». `rooms.py` a été modifié le 2026-09-04 à 08:37 par
+ce chantier : ce répertoire n'est pas de la matière dormante, c'est un chantier
+d'autrui en cours.
+
 ## Style
 
 Scripts de test autonomes lancés par `make test`, pas de pytest, pas de
