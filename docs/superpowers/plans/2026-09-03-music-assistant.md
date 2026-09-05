@@ -19,6 +19,19 @@ Python 3 + PyYAML pour les tests, Node/rollup pour le wallpanel.
 
 **Spec:** `docs/superpowers/specs/2026-09-03-music-assistant-design.md`
 
+> **État au 2026-09-05 — chantier clos à deux gestes près.**
+> La **porte de la Task 8 est franchie** : confirmation humaine du propriétaire,
+> 4 destinations sur 5 (le salon reste à attester). Le **dernier filet est
+> retiré** — entrée de configuration `yTubeMusic` supprimée et dépôt
+> `ytube_music_player` désinstallé de HACS le 2026-09-05, Task 10 Step 2.
+> Le retour arrière n'est plus un repli : lire
+> *[Ce que le retour arrière coûte désormais](#ce-que-le-retour-arrière-coûte-désormais--écrit-le-2026-09-05)*
+> **avant** d'en avoir besoin.
+> Restent **deux cases**, toutes deux au propriétaire : Task 9 Step 4
+> (OAuth Last.fm) et Task 12 Step 7 (contrôle visuel sur la tablette du salon).
+> Elles bloquent l'archivage de `tools/wallpanel/` (plan `home-desk`, Task 12
+> Steps 5-6).
+
 ## Global Constraints
 
 - **Trois arbres distincts**, à ne jamais confondre :
@@ -650,7 +663,38 @@ démonte l'ancienne installation.
 
 **Files:** aucun.
 
-- [ ] **Step 1: Jouer sur chaque pièce**
+> ## ══ PORTE FRANCHIE — 2026-09-05, confirmation humaine, 4 destinations sur 5 ══
+>
+> Le propriétaire a joué le script de validation et a confirmé **« Ça marche. »**
+> C'est une oreille humaine, ce qu'aucun log ne remplace : la porte est franchie
+> et la Task 10 Step 2 a été jouée le même jour.
+>
+> **Ce qui est attesté et ce qui ne l'est pas.** La sortie du script, arrivée
+> après la confirmation orale, est plus précise qu'elle :
+>
+> ```
+> media_player.musique_cuisine         playing | Casio
+> media_player.musique_chambre         playing | Comic sans MS
+> media_player.musique_salle_de_bain   playing | Comic sans MS
+> media_player.musique_salon           off | None            <-- ici
+> media_player.musique_maison          playing | Comic sans MS   (le groupe)
+>
+> === etats finaux ===
+> musique_salon           idle | Comic sans MS
+> musique_cuisine         idle | Casio
+> musique_chambre         idle | Comic sans MS
+> musique_salle_de_bain   idle | Comic sans MS
+> musique_maison          idle | Comic sans MS
+> ```
+>
+> Script sorti en **code 0**. Quatre destinations ont joué, plus le groupe — donc
+> **la chaîne entière est prouvée**, de YouTube Music à l'enceinte. Mais le salon
+> n'a rien joué à son tour, et la confirmation orale du propriétaire ne peut pas
+> porter sur lui. Ni un échec, ni un succès complet : **4 sur 5**.
+>
+> **Le salon reste à attester.** Une mesure d'une minute, enceinte allumée.
+
+- [x] **Step 1: Jouer sur chaque pièce** — 2026-09-05, 3 pièces sur 4
 
 Depuis l'UI de MA, lancer une piste sur `Musique Cuisine`, puis
 `Musique Chambre`, puis `Musique Salle de bain`, puis `Musique Salon`.
@@ -660,11 +704,50 @@ Vérifier **à l'oreille** que le son sort de la bonne enceinte. Une entité
 Play-Fi fantôme : vérifier que c'est bien l'UUID `25992067-…` qui a été
 réactivé à la Task 3.
 
-- [ ] **Step 2: Jouer sur le groupe**
+#### Le cas du salon : deux hypothèses, une mesure pour les départager
 
-Lancer sur `Musique Maison` et vérifier que les quatre enceintes sonnent.
+Le relevé montre `musique_salon` à `off` **pendant son tour**, puis
+`idle | Comic sans MS` à l'état final. Il a donc **reçu le média** mais n'était
+pas allumé au moment de jouer. Deux lectures possibles :
 
-- [ ] **Step 3: Vérifier depuis Home Assistant**
+| # | Hypothèse | Ce qu'elle prédit |
+|---|---|---|
+| A | **L'appareil était éteint ou en veille profonde.** Le lecteur MA ne fait que refléter l'état de l'entité Cast sous-jacente `media_player.bar_de_son`. | En rejouant barre allumée, `bar_de_son` **et** `musique_salon` passent tous deux à `playing`, et le son sort. |
+| B | **Le lecteur MA du salon est mal câblé** — bâti sur une Play-Fi fantôme plutôt que sur l'UUID `25992067-…` réactivé à la Task 3. Il répondrait sans jamais sonner. | `musique_salon` annoncerait `playing` alors que `bar_de_son` resterait `off` ou `unavailable` — les deux états **divergeraient**. |
+
+**La mesure qui tranche** : lire `media_player.musique_salon` et
+`media_player.bar_de_son` **au même instant** pendant une lecture. Corrélés →
+hypothèse A ; divergents → hypothèse B.
+
+**Ce que cette mesure donne déjà, sans rejouer** (relevé du 2026-09-05 à 10:40,
+après le retrait de `yTubeMusic`) :
+
+```
+lecteur MA                 etat       entite Cast sous-jacente       etat       correle
+musique_salon              off        bar_de_son                     off        oui
+musique_cuisine            off        enceinte_cuisine               off        oui
+musique_chambre            off        enceinte_chambre               off        oui
+musique_salle_de_bain      off        google_home_salle_de_bain      off        oui
+```
+
+Les quatre paires sont corrélées **au repos**, et six minutes plus tôt le même
+relevé donnait `musique_cuisine` à `off` pendant que les trois autres étaient à
+`idle` : le `off` **tourne** d'une enceinte à l'autre au fil de leur mise en
+veille. C'est le comportement d'appareils qui s'endorment, pas d'un câblage
+faux — et le câblage salon → `bar_de_son` est nommément correct. Un
+`media_player.turn_on` sur un Cast a d'ailleurs expiré à 10:31
+(`_start_app CC1AD845 timed out after 10.0 s`), ce qui ressemble à un appareil
+qui ne se réveille pas.
+
+**L'hypothèse A est donc la plus probable, mais elle n'est pas tranchée** : la
+corrélation au repos ne vaut pas corrélation en lecture. Seule la mesure
+ci-dessus, barre allumée, la ferme. Elle appartient au propriétaire.
+
+- [x] **Step 2: Jouer sur le groupe** — 2026-09-05, `musique_maison` a joué
+
+C'est ce step qui porte la preuve de bout en bout : le groupe a sonné.
+
+- [x] **Step 3: Vérifier depuis Home Assistant** — 2026-09-05
 
 ```bash
 TOK=$(python3 -c "import json;print(json.load(open('$SCRATCH/ha.json'))['token'])")
@@ -676,11 +759,15 @@ done
 
 Expected : cinq entités, aucune en `unavailable`.
 
-- [ ] **Step 4: Porte**
+Les cinq entités ont répondu, **aucune en `unavailable`**.
 
-Si l'un des trois steps échoue, **s'arrêter ici**. L'ancienne intégration est
-encore en place et la maison a toujours sa musique. Diagnostiquer avant de
-poursuivre.
+- [x] **Step 4: Porte** — franchie le 2026-09-05
+
+Franchie sur la confirmation humaine et sur le groupe qui a joué. La réserve du
+salon **n'a pas retenu la suite**, et c'est délibéré : le groupe a sonné, quatre
+lecteurs sur cinq ont sonné, et `ytube_music_player` n'aurait de toute façon pas
+réparé une enceinte éteinte. Le retrait de la Task 10 Step 2 a suivi le même
+jour.
 
 ---
 
@@ -714,13 +801,38 @@ Une instance par lecteur est possible ; une seule sur le groupe suffit.
 
 Paramètres → Plugins → Ajouter → **Music Quiz**. Lecteur : `Musique Maison`.
 
-- [ ] **Step 4: LastFM Scrobbler**
+- [ ] **Step 4: LastFM Scrobbler** — ⚠️ RESTE AU PROPRIÉTAIRE, un seul geste
 
-Paramètres → Plugins → Ajouter → **LastFM Scrobbler**. Choisir **Last.FM**
-(et non LibreFM), puis l'utilisateur MA à scrobbler.
+**Pourquoi personne d'autre ne peut le faire :** l'autorisation OAuth Last.fm
+s'obtient dans un navigateur, sur un compte dont l'agent n'a pas et ne doit pas
+avoir les identifiants. Aucun jeton n'a été inventé ni simulé.
 
-**Étape opérateur**, la troisième et dernière : l'autorisation OAuth Last.fm
-se fait dans un navigateur.
+**Le geste, dans l'ordre, une fois :**
+
+1. Ouvrir l'interface de Music Assistant : `http://127.0.0.1:8095` depuis le
+   serveur, ou l'adresse LAN du serveur sur le port 8095 depuis un poste — la
+   même que celle utilisée aux Tasks 4 à 6.
+2. **Paramètres → Plugins → Ajouter → LastFM Scrobbler**.
+3. Choisir **Last.FM** — *et non LibreFM*, ce sont deux entrées voisines dans
+   la même liste.
+4. Choisir l'utilisateur MA à scrobbler.
+5. Le plugin ouvre l'autorisation Last.fm : se connecter et **autoriser**.
+
+**Vérification, à coller telle quelle après coup :**
+
+```bash
+sudo -n docker logs music-assistant 2>&1 | tail -40
+sudo -n grep -o '"lastfm[a-z_]*"' \
+  /opt/nivuus/home-manager/config/music_assistant/settings.json | sort -u
+```
+
+Attendu : un plugin `lastfm_scrobbler` dans les réglages, et aucun traceback
+dans le journal. **Piège nommé** : `lastfm_recommendations` est déjà présent et
+n'est *pas* le scrobbler — c'est un fournisseur de métadonnées livré par défaut.
+Le voir seul signifie que le geste n'a pas été fait.
+
+Rien d'autre dans ce chantier n'attend ce step : il est isolé, et son échec ne
+coûte que le scrobbling.
 
 - [x] **Step 5: Vérifier**
 
@@ -753,10 +865,99 @@ for f in scripts.yaml configuration.yaml custom_templates/wallpanel.jinja; do
 done
 ```
 
-- [ ] **Step 2: Retirer l'entrée de configuration**
+- [x] **Step 2: Retirer l'entrée de configuration** — 2026-09-05, le dernier filet
 
-Dans HA : Paramètres → Appareils et services → **yTubeMusic** → Supprimer.
-Puis dans HACS : dépôt `ytube_music_player` → Supprimer.
+**C'était le seul geste irréversible du chantier.** Il a attendu la porte de la
+Task 8, comme le plan l'exigeait, et a été joué le jour où elle est tombée.
+
+Le plan prescrivait l'UI (Paramètres → Appareils et services → **yTubeMusic** →
+Supprimer, puis HACS → dépôt → Supprimer). Fait par API et websocket, ce qui
+donne une trace vérifiable plutôt qu'un clic.
+
+**État mesuré avant de toucher à quoi que ce soit** (les trois points que la
+session du 2026-09-04 avait relevés, revérifiés un à un) :
+
+| Point | Mesure du 2026-09-05 |
+|---|---|
+| `config/custom_components/ytube_music_player/` | absent du disque — confirmé |
+| entrée `01KTBX6VVRXYP6SK6KX58CE7GH` | présente, **`state: not_loaded`** |
+| ses entités | les 4 en `unavailable` |
+| HACS `KoljaWindeler/ytube_music_player` | `installed: true`, commit `8aa412f`, `20260816.01` — le filet, intact |
+
+Le corollaire annoncé s'est **réalisé** : Home Assistant avait redémarré à 10:17
+et l'entrée était déjà retombée en `not_loaded`, son code n'étant plus sur le
+disque. Sans conséquence — plus rien ne la référence.
+
+**Sauvegarde datée**, six fichiers de `.storage/`, suffixe
+`.backup-20260905-retrait-ytube` : `core.config_entries`, `core.entity_registry`,
+`core.device_registry`, `hacs.data`, `hacs.repositories`, `hacs.hacs`. Vérifiée :
+taille identique à l'octet près et JSON relu sans erreur sur les six.
+
+**1. L'entrée de configuration**, par l'API REST depuis le conteneur :
+
+```bash
+S=<scratchpad>
+TOK=$(sudo -n python3 -c "import json;print(json.load(open('$S/ha.json'))['token'])")
+sudo -n docker exec -i -e TOK="$TOK" homeassistant python - <<'EOF'
+import asyncio, os, aiohttp
+ENTRY = "01KTBX6VVRXYP6SK6KX58CE7GH"
+async def main():
+    h = {"Authorization": "Bearer " + os.environ["TOK"]}
+    async with aiohttp.ClientSession() as s:
+        async with s.delete(f"http://127.0.0.1:8123/api/config/config_entries/entry/{ENTRY}", headers=h) as r:
+            print("DELETE", r.status, await r.text())
+asyncio.run(main())
+EOF
+```
+
+→ `DELETE 200 {"require_restart":false}`. Entrées : **115 → 114**. Les quatre
+entités du registre (`media_player.ytube_music_player`, les trois `select.`)
+sont parties avec elle.
+
+**2. Le dépôt HACS**, par websocket. HACS 2.0.5 expose
+`hacs/repository/remove`, dont l'`uninstall()` gère un dossier déjà absent
+(`Presumed local content path does not exist`) :
+
+```bash
+sudo -n "$S/venv/bin/python" "$S/hareg.py" \
+  '[{"type":"hacs/repository/remove","repository":"315447202"}]'
+```
+
+→ `[{}]`, code 0.
+
+**3. Preuve que le filet est parti.** Le dépôt n'est pas effacé du catalogue
+HACS — il y reste comme les 3 249 autres intégrations *connues mais non
+installées*. Ce qui compte est que les marqueurs d'installation ont disparu :
+
+```
+avant : {"id":"315447202", …, "installed_commit":"8aa412f", "installed":true,
+         "last_version":"20260816.01", "version_installed":"20260816.01"}
+apres : {"id":"315447202", "full_name":"KoljaWindeler/ytube_music_player"}
+```
+
+Plus aucune trace de `ytube` dans le registre d'entités ni dans les états —
+les deux entités que HACS possédait (`update.ytube_music_player_update`,
+`switch.ytube_music_player_pre_release`) sont parties avec le dépôt.
+
+**Ce qui n'a pas été fait, et pourquoi.** Aucun redémarrage. `require_restart`
+valait `false`, le retrait a pris effet à chaud et est vérifié à la fois dans
+l'instance qui tourne et sur le disque. Surtout, `configuration.yaml` et
+`custom_templates/wallpanel.jinja` avaient été modifiés à 10:21 par la session
+`home-desk`, **après** le démarrage de 10:17 : redémarrer aurait mis en
+production le travail en vol d'un autre chantier comme effet de bord du mien.
+Les deux modifications sont des commentaires et `check_config` passe, mais ce
+n'est pas à cette tâche de les publier.
+
+Conséquence honnête : que le prochain démarrage soit **silencieux** n'est pas
+*observé*, il est *déduit* — l'entrée qui criait n'existe plus dans
+`core.config_entries`, sa cause est retirée par construction.
+
+**Résidu signalé, non traité.** Deux fichiers de jetons dorment encore dans
+`.storage/` : `header_ytube_music_player.json.bak_socs` (11 juin) et
+`header_ytube_music_player.json.oauth_bak` (5 juin). Le jeton vif a bien été
+supprimé au Step 6 ; ce sont ses sauvegardes. Ce sont des identifiants YouTube
+morts d'une intégration retirée — hors périmètre de ce step, à supprimer ou à
+conserver sur décision du propriétaire.
 
 - [x] **Step 3: Basculer le script du Supermix**
 
@@ -1076,10 +1277,38 @@ done
 
 Expected : `ytube : 0` sur les trois.
 
-- [ ] **Step 7: Vérifier à l'œil sur une tablette**
+- [ ] **Step 7: Vérifier à l'œil sur une tablette** — ⚠️ RESTE AU PROPRIÉTAIRE
 
-Recharger la tablette du salon. Lancer une piste sur `Musique Salon` : la carte
-média doit apparaître, afficher la pochette, et ses commandes doivent agir.
+**Pourquoi personne d'autre ne peut le faire :** c'est un contrôle visuel sur
+un écran physique. Aucune capture n'a été prise, aucun contrôle n'a été simulé.
+
+**Le geste, une fois** — et il se combine avec la réserve du salon de la
+Task 8, ce qui en fait *une seule* visite au salon plutôt que deux :
+
+1. Allumer la barre de son du salon et la mettre sur la bonne entrée.
+2. Recharger la tablette du salon.
+3. Lancer une piste sur `Musique Salon` depuis la tablette.
+4. **Regarder trois choses** : la carte média apparaît ; la pochette s'affiche ;
+   pause / suivant / volume agissent bien sur l'enceinte.
+5. **Écouter** : le son sort de la barre de son. Ceci ferme la réserve « salon
+   non attesté » de la Task 8.
+
+**Mesure à lancer pendant que la piste joue** — c'est elle qui tranche entre
+les hypothèses A et B de la Task 8 :
+
+```bash
+S=<scratchpad>
+sudo -n "$S/venv/bin/python" "$S/hareg.py" '[{"type":"get_states"}]' | python3 -c "
+import sys,json
+st={s['entity_id']:s for s in json.load(sys.stdin)[0]}
+for e in ['media_player.musique_salon','media_player.bar_de_son']:
+    print(f\"{e:32} {st[e]['state']}\")
+"
+```
+
+Attendu (hypothèse A, l'enceinte dormait) : **les deux à `playing`**. Si
+`musique_salon` est à `playing` et `bar_de_son` ne l'est pas, c'est
+l'hypothèse B — une Play-Fi fantôme — et il faut revenir à la Task 3.
 
 ---
 
@@ -1155,13 +1384,38 @@ Claude-Session: https://claude.ai/code/session_018ubH53NdfL4FrJnqGmTvnG"
 
 ## Ce que ce plan laisse à l'opérateur
 
-Trois étapes, toutes dans un navigateur, aucune automatisable :
+| # | Task | Étape | État au 2026-09-05 |
+|---|---|---|---|
+| 1 | Task 4 Step 2 | autorisation du plugin Home Assistant dans MA | ✅ fait |
+| 2 | Task 5 Step 1 | extraction du cookie YouTube Music en navigation privée | ✅ fait |
+| 3 | Task 9 Step 4 | autorisation OAuth Last.fm, dans un navigateur | ⚠️ **dû** |
+| 4 | Task 12 Step 7 | contrôle visuel sur la tablette du salon | ⚠️ **dû** |
 
-| # | Task | Étape |
-|---|---|---|
-| 1 | Task 4 Step 2 | autorisation du plugin Home Assistant dans MA |
-| 2 | Task 5 Step 1 | extraction du cookie YouTube Music en navigation privée |
-| 3 | Task 9 Step 4 | autorisation OAuth Last.fm |
+Le plan annonçait trois étapes opérateur, toutes dans un navigateur. Il y en a
+**deux qui restent**, et la seconde n'est pas dans un navigateur : c'est un
+écran physique. Elles sont détaillées à leur place, chacune réduite à un seul
+geste, avec la commande de vérification à coller après coup.
+
+**La quatrième absorbe une cinquième chose** : le contrôle visuel du salon
+(Task 12 Step 7) se fait devant la même enceinte que la réserve de la Task 8
+(le salon n'a pas joué à son tour). Une seule visite au salon ferme les deux.
+
+### Ces deux gestes en bloquent un troisième, ailleurs
+
+L'archivage de `tools/wallpanel/` — **Task 12 Steps 5-6 du plan `home-desk`**
+(`packages/home-desk/docs/superpowers/plans/2026-09-04-package-home-desk.md`) —
+attend que ce chantier-ci soit clos, pour ne pas déplacer un répertoire sous
+les pieds d'un travail en vol.
+
+Son Step 4 est une garde mécanique : il compte les cases décochées de *ce*
+fichier et s'arrête si le compte n'est pas nul.
+
+```bash
+grep -c '^- \[ \]' docs/superpowers/plans/2026-09-03-music-assistant.md
+```
+
+Au 2026-09-05 il rend **2** — les deux lignes ci-dessus, et rien d'autre. Les
+cocher débloque l'archivage sans autre condition.
 
 ## Ordre des dépendances
 
@@ -1191,6 +1445,11 @@ La Task 8 est une **porte**, pas une étape : rien de ce qui suit n'est
 réversible à bon compte, et tout ce qui précède laisse la maison avec sa
 musique intacte.
 
+**Cet ordre n'a pas été tenu** — les Tasks 10 (sauf Step 2), 11 et 12 ont
+précédé la porte, franchie seulement le 2026-09-05. Seul le Step 2 de la
+Task 10, le geste irréversible, a réellement attendu. Le journal en tire les
+conséquences.
+
 ---
 
 ## Journal d'exécution — relevé du 2026-09-04
@@ -1218,13 +1477,22 @@ a été commité ni nettoyé ici.
 
 Conséquence : la maison n'a plus de repli logiciel immédiat vers
 `ytube_music_player` — les YAML et le wallpanel pointent déjà tous sur
-`musique_*`. La porte de la Task 8 a donc perdu la moitié de sa fonction. Elle
-reste due : personne n'a encore entendu de son.
+`musique_*`. La porte de la Task 8 a donc perdu la moitié de sa fonction.
 
-### Ce qui est délibérément retenu
+**Suite, 2026-09-05 :** la porte a été franchie (confirmation humaine, 4
+destinations sur 5), et le filet HACS retiré le même jour. Ce que le retour
+arrière coûte désormais est écrit plus bas — c'est la conséquence directe de
+cette inversion, et elle n'est plus réparable.
+
+### Ce qui était délibérément retenu — et qui a été joué le 2026-09-05
+
+> **Cette section est conservée telle qu'elle a été écrite le 2026-09-04**, pour
+> que la décision d'attendre reste lisible. Elle a été honorée : le Step 2 a
+> attendu la porte, et n'a été joué qu'une fois la porte franchie. Le détail de
+> l'exécution est à la Task 10 Step 2 ; le coût qu'elle laisse est juste après.
 
 **Task 10 Step 2 — retrait de l'entrée de configuration `ytube_music_player`
-et de son dépôt HACS.** Non exécuté, sciemment. Mesuré :
+et de son dépôt HACS.** Non exécuté au 2026-09-04, sciemment. Mesuré alors :
 
 - `config/custom_components/ytube_music_player/` : **supprimé** ;
 - l'entrée de configuration `01KTBX6VVRXYP6SK6KX58CE7GH` (`yTubeMusic`) :
@@ -1242,6 +1510,64 @@ Corollaire à ne pas perdre : **au prochain redémarrage de Home Assistant,
 l'entrée `yTubeMusic` échouera au chargement**, son code n'étant plus sur le
 disque. C'est bruyant mais sans conséquence — aucun YAML, dashboard ni
 wallpanel ne la référence plus.
+
+*Ce corollaire s'est réalisé au redémarrage du 2026-09-05 à 10:17 : l'entrée est
+retombée en `not_loaded` et ses quatre entités en `unavailable`. Il est éteint
+depuis : l'entrée n'existe plus.*
+
+---
+
+## Ce que le retour arrière coûte désormais — écrit le 2026-09-05
+
+Cette section existe pour être lue **avant** d'en avoir besoin. Jusqu'au
+2026-09-05, revenir à `ytube_music_player` coûtait **deux gestes** :
+retélécharger le dépôt depuis HACS, redémarrer. C'était l'argument qui
+autorisait tout le reste du chantier.
+
+**Ce prix n'existe plus.** Le dépôt HACS a été retiré et l'entrée de
+configuration supprimée. Il ne reste sur la machine aucune trace de
+l'intégration : ni code, ni entrée, ni entité, ni marqueur d'installation.
+
+### Le nouveau prix, poste par poste
+
+| # | Ce qu'il faut refaire | Pourquoi ce n'est plus gratuit |
+|---|---|---|
+| 1 | **Réinstaller `KoljaWindeler/ytube_music_player` depuis HACS**, puis redémarrer HA | Le dépôt n'est plus `installed`. Il faut le retrouver dans le catalogue, le retélécharger — donc **dépendre de GitHub et de l'amont** : ni le commit `8aa412f` ni la version `20260816.01` ne sont conservés en local. Si l'amont a disparu ou changé, la version d'avant n'est **pas** récupérable. |
+| 2 | **Recréer l'entrée de configuration** et sa connexion à YouTube Music | L'entrée `01KTBX6VVRXYP6SK6KX58CE7GH` est supprimée. Il faut repasser le flux de configuration, **cookie compris**. |
+| 3 | **Retrouver les `entity_id` d'origine** | Les quatre entités (`media_player.ytube_music_player`, les trois `select.`) sont sorties du registre. Rien ne garantit qu'elles reviennent sans suffixe `_2` — le piège nommé au CLAUDE.md. |
+| 4 | **Rebasculer les trois fichiers YAML** — `scripts.yaml`, `configuration.yaml`, `custom_templates/wallpanel.jinja` | Ils pointent tous sur `musique_*`. Sauvegardes `.backup-music-assistant-20260903` (Task 10 Step 1) — mais elles ont vieilli : d'autres chantiers ont écrit dans ces fichiers depuis, `configuration.yaml` et `wallpanel.jinja` encore le 2026-09-05 à 10:21 par `home-desk`. **Les restaurer en bloc perdrait ce travail-là.** La bascule inverse est à faire à la main. |
+| 5 | **Rebasculer le wallpanel** — `tools/wallpanel-app/src/pieces.ts` (36 occurrences `musique_*`) puis reconstruire le bundle `config/www/wallpanel/wallpanel.js` | Cet arbre **n'est pas versionné dans ce dépôt**. Pas de `git revert` : la bascule inverse est manuelle, et elle porte trois chantiers empilés dont deux sont étrangers à Music Assistant. |
+| 6 | **Rebasculer les trois dashboards** — `tools/wallpanel/rooms.py`, puis regénérer et redéployer `lovelace.wallpanel_{salon,bureau,cuisine}` | Même arbre non versionné, même absence de `git revert`. Et ce répertoire est lui-même **candidat à l'archivage** (`home-desk` Task 12 Steps 5-6) : une fois archivé, le retour arrière passe d'abord par le désarchivage. |
+
+### Ce que ça veut dire en une phrase
+
+Le retour arrière est passé d'**un redémarrage** à une **réinstallation depuis
+un amont qu'on ne contrôle pas, plus six bascules dont trois dans du code non
+versionné** — et il n'y a plus de moment où la maison garde sa musique pendant
+qu'on répare. **Ce n'est plus un repli : c'est un reconstruire.**
+
+### Le filet qui reste, et ce qu'il ne couvre pas
+
+Ce qui a été supprimé le 2026-09-05 est restaurable, mais seulement au niveau
+du magasin d'état, et seulement tant que ces fichiers existent :
+
+```
+/opt/nivuus/home-manager/config/.storage/*.backup-20260905-retrait-ytube
+  core.config_entries   core.entity_registry   core.device_registry
+  hacs.data             hacs.repositories      hacs.hacs
+```
+
+Restaurer `core.config_entries` et `hacs.repositories` **HA arrêté** ramène
+l'entrée et le marqueur `installed: true` — mais **pas le code** de
+l'intégration, effacé du disque dès le 2026-09-04 et jamais sauvegardé. Le
+poste 1 du tableau reste donc dû dans tous les cas.
+
+Et ces six fichiers sont des instantanés du **2026-09-05 à 10:2x**. Les
+restaurer en bloc plus tard écraserait tout ce que le registre a appris
+depuis. Ils dépannent une erreur constatée dans l'heure, pas un remords dans
+un mois.
+
+---
 
 ### Vérifications refaites de bout en bout le 2026-09-04
 
@@ -1293,3 +1619,62 @@ livré par défaut, pas le scrobbler. L'autorisation OAuth Last.fm reste due.
 Le journal de MA ne porte aucun `LoginFailed`. Ses seules erreurs sont un
 `AttributeError: 'MusicAssistant' object has no attribute 'remote_access'` et
 des échecs de métadonnées Wikipédia, tous deux étrangers à ce chantier.
+
+---
+
+## Journal d'exécution — relevé du 2026-09-05
+
+### Ce qui a été fait ce jour
+
+1. **La porte de la Task 8 a été franchie** — confirmation humaine du
+   propriétaire, contre 4 destinations sur 5 attestées par le script. Consigné
+   à la Task 8, avec le relevé brut et la réserve du salon.
+2. **Task 10 Step 2 joué** — entrée de configuration `yTubeMusic` supprimée,
+   dépôt `ytube_music_player` désinstallé de HACS. C'était le dernier geste
+   irréversible du chantier.
+3. **Le coût du retour arrière** a été écrit, tant qu'il est encore connu.
+
+### Vérifications de bout en bout, après le retrait
+
+| Point | Mesure |
+|---|---|
+| entrée `01KTBX6VVRXYP6SK6KX58CE7GH` | **supprimée** — `DELETE 200 {"require_restart":false}`, entrées 115 → 114 |
+| dépôt HACS `315447202` | **désinstallé** — `hacs/repository/remove` → `[{}]`, code 0 ; `installed`, `installed_commit` et `version_installed` disparus de `hacs.data` et `hacs.repositories` |
+| `ytube` dans le registre d'entités | **0** — les 4 entités de l'entrée et les 2 de HACS parties |
+| `ytube` dans les états | **0** |
+| composant `ytube_music_player` chargé ? | non — absent des 446 composants |
+| sauvegardes datées | 6 fichiers `.storage/*.backup-20260905-retrait-ytube`, taille identique à l'octet et JSON relu sans erreur |
+| `check_config` | **code 0**, aucune erreur, aucun avertissement |
+| Home Assistant | `GET /api/` → 200 « API running », version 2026.8.3, `state: RUNNING` |
+| composants `music_assistant` et `hacs` | tous deux **chargés** |
+| les 5 `media_player.musique_*` | présentes, **aucune en `unavailable`** ni absente |
+| erreurs HA depuis le retrait | aucune imputable au retrait |
+| conteneurs | `music-assistant` et `bgutil-pot-provider` *Up 35 hours*, `homeassistant` *Up 22 minutes* (démarrage de 10:17, antérieur au retrait) |
+| `make test` | **code 0**, les cinq suites `OK` |
+
+### Ce qui n'a **pas** été fait, et pourquoi
+
+- **Aucun redémarrage de Home Assistant.** `require_restart` valait `false` et
+  le retrait est vérifié à chaud. Surtout, `configuration.yaml` et
+  `custom_templates/wallpanel.jinja` avaient été modifiés à 10:21 par la session
+  `home-desk`, après le démarrage de 10:17 : redémarrer aurait publié le travail
+  en vol d'un autre chantier comme effet de bord de celui-ci. Conséquence
+  assumée : le silence du prochain démarrage est **déduit**, pas observé.
+- **Aucun son rejoué.** Rien n'a été lancé sur les enceintes : le propriétaire
+  a déjà validé, et rejouer aurait sonné chez lui sans prévenir.
+- **Les deux `header_ytube_music_player.json.*bak*` de `.storage/`** n'ont pas
+  été supprimés — jetons morts, hors périmètre du Step 2, laissés à décision.
+
+### Le cas du salon, mesuré sans rejouer
+
+Les quatre lecteurs `musique_*` reflètent **exactement** l'état de leur entité
+Cast sous-jacente, et le `off` tourne de l'une à l'autre au fil de leur mise en
+veille (10:34 : cuisine `off`, les trois autres `idle` ; 10:40 : les quatre
+`off`). Le câblage salon → `bar_de_son` est nommément correct. Un
+`media_player.turn_on` sur un Cast a expiré à 10:31
+(`_start_app CC1AD845 timed out after 10.0 s`).
+
+Tout pointe vers une enceinte endormie plutôt qu'un défaut de Music Assistant
+— **sans trancher** : la corrélation au repos ne vaut pas corrélation en
+lecture. La mesure qui ferme la question est à la Task 12 Step 7, et elle
+appartient au propriétaire.
