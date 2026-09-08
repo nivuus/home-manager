@@ -1,6 +1,6 @@
 apiVersion: nivuus.dev/v1
 name: home-manager
-version: 1.0.0
+version: 0.0.0
 label: "Domotique (Home Assistant, Thread, Zigbee, Matter, MQTT)"
 tier: userspace
 
