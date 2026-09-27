@@ -1,0 +1,81 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Personas Studio",
+        "description": "Trois canaux, trois destinations : la conversation attend une réponse, les événements de vie et le feedback partent sans en attendre.",
+        "data": {
+          "url": "Conversation — URL",
+          "persona": "Conversation — persona",
+          "token": "Conversation — jeton",
+          "event_url": "Événements de vie — URL",
+          "event_persona": "Événements de vie — persona",
+          "event_token": "Événements de vie — jeton",
+          "feedback_url": "Feedback — URL",
+          "feedback_persona": "Feedback — persona",
+          "feedback_token": "Feedback — jeton"
+        },
+        "data_description": {
+          "url": "Endpoint ou base du canal conversation (entité conversation, synchrone). Une URL SANS chemin (http://127.0.0.1:8080) reçoit /webhook/<persona> ; une URL AVEC chemin est utilisée telle quelle.",
+          "persona": "Persona qui répond. Ignorée si l'URL porte déjà un chemin.",
+          "token": "Bearer envoyé à ce canal. Vide = aucun en-tête Authorization.",
+          "event_url": "Endpoint de personas_home.send_event. Vide = même URL que la conversation.",
+          "event_persona": "Persona qui reçoit les événements. Ignorée si l'URL porte déjà un chemin.",
+          "event_token": "Bearer envoyé à ce canal. Vide = aucun en-tête. N'hérite jamais d'un autre canal.",
+          "feedback_url": "Endpoint de personas_home.send_feedback (notifications et réparations). Vide = même URL que la conversation.",
+          "feedback_persona": "Persona qui reçoit les retours. Ignorée si l'URL porte déjà un chemin.",
+          "feedback_token": "Bearer envoyé à ce canal. Vide = aucun en-tête. N'hérite jamais d'un autre canal."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Endpoint injoignable ou refusé.",
+      "invalid_auth": "Jeton refusé par ce canal.",
+      "unknown": "Erreur inattendue.",
+      "wrong_endpoint": "L'hôte répond mais refuse cet endpoint. Une URL SANS chemin reçoit /webhook/<persona> ; une URL AVEC chemin part telle quelle — vérifier laquelle des deux formes est attendue.",
+      "unknown_host": "Nom d'hôte introuvable.",
+      "tls_failed": "Échec TLS : certificat invalide ou hôte inattendu. Ce n'est pas une panne passagère, l'URL n'est pas enregistrée."
+    },
+    "abort": {
+      "already_configured": "Cette URL de conversation et cette persona sont déjà configurées."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Personas Studio",
+        "description": "Modifier un canal. L'entité conversation est conservée : les automations qui la nomment continuent de marcher.",
+        "data": {
+          "url": "Conversation — URL",
+          "persona": "Conversation — persona",
+          "token": "Conversation — jeton",
+          "event_url": "Événements de vie — URL",
+          "event_persona": "Événements de vie — persona",
+          "event_token": "Événements de vie — jeton",
+          "feedback_url": "Feedback — URL",
+          "feedback_persona": "Feedback — persona",
+          "feedback_token": "Feedback — jeton"
+        },
+        "data_description": {
+          "url": "Endpoint ou base du canal conversation (entité conversation, synchrone). Une URL SANS chemin (http://127.0.0.1:8080) reçoit /webhook/<persona> ; une URL AVEC chemin est utilisée telle quelle.",
+          "persona": "Persona qui répond. Ignorée si l'URL porte déjà un chemin.",
+          "token": "Bearer envoyé à ce canal. Vide = aucun en-tête Authorization.",
+          "event_url": "Endpoint de personas_home.send_event. Vide = même URL que la conversation.",
+          "event_persona": "Persona qui reçoit les événements. Ignorée si l'URL porte déjà un chemin.",
+          "event_token": "Bearer envoyé à ce canal. Vide = aucun en-tête. N'hérite jamais d'un autre canal.",
+          "feedback_url": "Endpoint de personas_home.send_feedback (notifications et réparations). Vide = même URL que la conversation.",
+          "feedback_persona": "Persona qui reçoit les retours. Ignorée si l'URL porte déjà un chemin.",
+          "feedback_token": "Bearer envoyé à ce canal. Vide = aucun en-tête. N'hérite jamais d'un autre canal."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Endpoint injoignable ou refusé.",
+      "invalid_auth": "Jeton refusé par ce canal.",
+      "unknown": "Erreur inattendue.",
+      "wrong_endpoint": "L'hôte répond mais refuse cet endpoint. Une URL SANS chemin reçoit /webhook/<persona> ; une URL AVEC chemin part telle quelle — vérifier laquelle des deux formes est attendue.",
+      "unknown_host": "Nom d'hôte introuvable.",
+      "tls_failed": "Échec TLS : certificat invalide ou hôte inattendu. Ce n'est pas une panne passagère, l'URL n'est pas enregistrée."
+    }
+  }
+}

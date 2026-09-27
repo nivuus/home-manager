@@ -1,0 +1,13 @@
+{
+  "domain": "personas_home",
+  "name": "Personas Studio",
+  "version": "3.0.0",
+  "dependencies": [],
+  "after_dependencies": [
+    "conversation"
+  ],
+  "codeowners": [],
+  "requirements": [],
+  "iot_class": "local_polling",
+  "config_flow": true
+}

@@ -103,6 +103,14 @@ with tempfile.TemporaryDirectory() as root:
     check("la configuration du broker est deposee",
           (dest / "mosquitto" / "mosquitto.conf").is_file(), True)
 
+    # L'integration personas_home est du CODE, pas de la donnee : elle voyage
+    # avec la pile, contrairement au reste de config/.
+    personas = dest / "config" / "custom_components" / "personas_home"
+    check("l'integration personas_home est deposee",
+          (personas / "__init__.py").is_file(), True)
+    check("le module de payloads est depose",
+          (personas / "payloads.py").is_file(), True)
+
     # zigbee2mqtt lit son port dans SON fichier, pas dans l'environnement : le
     # bootstrap doit donc porter la reponse du wizard.
     z2m = (dest / "zigbee2mqtt" / "configuration.yaml").read_text()
@@ -217,6 +225,65 @@ with tempfile.TemporaryDirectory() as root:
     check("seule la surcouche dev est retiree, la surcouche USB reste",
           values["COMPOSE_FILE"],
           "docker-compose.yml:docker-compose.usb.yml")
+
+# --- l'integration est REMPLACEE, pas fusionnee --------------------------
+# config/ est protege, mais custom_components/personas_home/ porte le nom de ce
+# package : il lui appartient. La copie de stack/ FUSIONNE — un module retire
+# entre deux versions, ou un __pycache__ perime, survivrait a la mise a jour et
+# Home Assistant le chargerait. C'est la regle 2 de home-stock, apprise la.
+#
+# Et la reciproque compte autant : les autres repertoires de
+# custom_components/ appartiennent a d'autres packages ou au proprietaire de la
+# machine. Les emporter serait desinstaller le garde-manger en mettant a jour
+# le socle.
+with tempfile.TemporaryDirectory() as root:
+    dest = pathlib.Path(root) / DEST_REL
+    (dest / "config").mkdir(parents=True)
+    (dest / "mosquitto").mkdir(parents=True)
+    (dest / "zigbee2mqtt").mkdir(parents=True)
+    (dest / "config" / "configuration.yaml").write_text("# 400 automations\n")
+    (dest / "zigbee2mqtt" / "configuration.yaml").write_text("advanced:\n")
+
+    personas = dest / "config" / "custom_components" / "personas_home"
+    (personas / "__pycache__").mkdir(parents=True)
+    (personas / "module_retire.py").write_text("# version precedente\n")
+    (personas / "__pycache__" / "const.cpython-313.pyc").write_text("perime")
+
+    # Un satellite, depose par un AUTRE package.
+    voisin = dest / "config" / "custom_components" / "home_stock"
+    voisin.mkdir(parents=True)
+    (voisin / "__init__.py").write_text("# appartient a home-stock\n")
+
+    proc = run(root)
+    check("mise a jour sur une integration deja presente reussit",
+          proc.returncode, 0)
+
+    check("un module retire entre deux versions ne survit pas",
+          (personas / "module_retire.py").exists(), False)
+    check("un __pycache__ perime ne survit pas",
+          (personas / "__pycache__").exists(), False)
+    check("l'integration est bien redeposee",
+          (personas / "__init__.py").is_file(), True)
+
+    check("l'integration d'un autre package n'est pas emportee",
+          (voisin / "__init__.py").read_text(), "# appartient a home-stock\n")
+
+# --- un repertoire possede qu'on ne peut pas retirer fait echouer la phase --
+# Un lien symbolique (un depot de developpement monte a la main, par exemple)
+# ne se retire pas avec rmtree. Avaler cette erreur laissait copytree ecrire A
+# TRAVERS le lien, dans un repertoire que ce package ne possede pas.
+with tempfile.TemporaryDirectory() as root, \
+        tempfile.TemporaryDirectory() as elsewhere:
+    dest = pathlib.Path(root) / DEST_REL
+    (dest / "config" / "custom_components").mkdir(parents=True)
+    (dest / "config" / "custom_components" / "personas_home").symlink_to(
+        elsewhere)
+
+    proc = run(root)
+    check("un repertoire possede impossible a retirer fait echouer la phase",
+          proc.returncode != 0, True)
+    check("rien n'est ecrit a travers le lien",
+          sorted(p.name for p in pathlib.Path(elsewhere).iterdir()), [])
 
 # --- reponses invalides --------------------------------------------------
 with tempfile.TemporaryDirectory() as root:

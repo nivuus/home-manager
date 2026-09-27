@@ -17,7 +17,8 @@ help:
 
 test:
 	@for t in test_manifest_contract test_compose_portable \
-	          test_install_hook test_activate_hook test_wizard_answers; do \
+	          test_install_hook test_activate_hook test_wizard_answers \
+	          test_personas_payloads; do \
 	    echo "--- $$t"; \
 	    $(PYTHON) $(PACKAGE_DIR)/tests/$$t.py || exit 1; \
 	done
