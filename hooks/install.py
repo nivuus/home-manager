@@ -1,47 +1,45 @@
 #!/usr/bin/env python3
-"""Phase install du package home-manager : deposer la pile sur la cible.
+"""Install phase of the home-manager package: lay the stack down on the target.
 
-Le sous-arbre stack/ EST le repertoire de deploiement, a l'octet pres, donc la
-depose est une copie recursive — il n'y a pas de liste de fichiers a tenir a
-jour, et donc pas de fichier qu'on oublie d'ajouter en meme temps qu'un
-service. Deux exceptions, retirees APRES la copie : le gabarit d'environnement
-(il a fait son travail) et la surcouche de developpement.
+The stack/ subtree IS the deployment directory, byte for byte, so laying it
+down is a recursive copy -- there is no file list to keep up to date, and so
+no file forgotten when a service is added. Two exceptions, removed AFTER the
+copy: the environment template (it has done its job) and the development
+overlay.
 
-QUATRE REGLES PORTENT LE RESTE.
+FOUR RULES CARRY THE REST.
 
-1. RIEN QUI PORTE DE LA DONNEE N'EST ECRASE. config/ contient les automations,
-   la base, les secrets et les jetons d'une maison entiere ; mosquitto/passwd
-   les comptes du broker ; zigbee2mqtt/configuration.yaml le network_key du
-   reseau Zigbee ; .env le mot de passe MQTT. Cette phase tourne aussi sur une
-   machine deja installee (`install.py --root /`), ou une reecriture
-   detruirait tout cela sans bruit. Les cles absentes du .env sont AJOUTEES,
-   les presentes ne sont pas touchees — SAUF UNE, COMPOSE_FILE, et seulement
-   pour lui retirer une reference que la regle 4 vient de rendre invalide
-   (voir scrub_dev_overlay()) : la seule reecriture d'une valeur existante que
-   ce hook s'autorise, parce que la laisser telle quelle casse la pile plus
-   surement qu'elle ne la protege.
+1. NOTHING THAT CARRIES DATA IS OVERWRITTEN. config/ holds the automations,
+   the database, the secrets and the tokens of a whole house; mosquitto/passwd
+   the broker accounts; zigbee2mqtt/configuration.yaml the network_key of the
+   Zigbee network; .env the MQTT password. This phase also runs on an
+   already installed machine (`install.py --root /`), where a rewrite would
+   silently destroy all of that. Keys missing from .env are ADDED, present
+   ones are left alone -- EXCEPT ONE, COMPOSE_FILE, and only to remove a
+   reference that rule 4 has just made invalid (see scrub_dev_overlay()): the
+   only rewrite of an existing value this hook allows itself, because leaving
+   it as is breaks the stack more surely than it protects it.
 
-2. LES REPONSES SONT VALIDEES AVANT LA PREMIERE ECRITURE. Le hook lit son
-   contexte sur stdin, et le chemin autonome que le contrat existe pour
-   permettre — un config.json ecrit a la main — ne passe par aucun validateur.
-   Un mode radio inconnu doit faire echouer la phase avant la copie, pas au
-   milieu.
+2. ANSWERS ARE VALIDATED BEFORE THE FIRST WRITE. The hook reads its context
+   on stdin, and the standalone path the contract exists to allow -- a
+   hand-written config.json -- goes through no validator. An unknown radio
+   mode must fail the phase before the copy, not halfway through it.
 
-3. CE QUI PORTE LE NOM DU PACKAGE EST REMPLACE, PAS FUSIONNE.
-   config/custom_components/personas_home/ est du CODE depose sous un
-   repertoire que la regle 1 protege parce qu'il porte de la donnee. La copie
-   fusionne : un module retire entre deux versions, ou un __pycache__ perime,
-   survivrait a la mise a jour et Home Assistant le chargerait. Voir
-   OWNED_TREES — et la liste ne nomme que ce que ce package a depose, jamais
-   les integrations voisines.
+3. WHAT BEARS THE PACKAGE'S NAME IS REPLACED, NOT MERGED.
+   config/custom_components/personas_home/ is CODE laid down under a
+   directory that rule 1 protects because it carries data. The copy merges:
+   a module removed between two versions, or a stale __pycache__, would
+   survive the update and Home Assistant would load it. See OWNED_TREES --
+   the list names only what this package laid down, never the neighbouring
+   integrations.
 
-4. LE FICHIER DE DEVELOPPEMENT NE PART PAS. docker-compose.dev.yml monte des
-   depots qui n'existent que sur la machine de son auteur ; docker creerait
-   ailleurs des repertoires vides que Home Assistant chargerait comme des
-   integrations cassees. Il est donc retire du repertoire de deploiement a
-   CHAQUE passage, y compris une reinstallation — ce qui peut laisser un .env
-   preexistant reference un fichier qui vient de disparaitre ; regle 1 dit ce
-   que le hook en fait.
+4. THE DEVELOPMENT FILE DOES NOT SHIP. docker-compose.dev.yml mounts
+   repositories that exist only on its author's machine; elsewhere docker
+   would create empty directories that Home Assistant would load as broken
+   integrations. It is therefore removed from the deployment directory on
+   EVERY pass, reinstalls included -- which can leave a pre-existing .env
+   referencing a file that just disappeared; rule 1 says what the hook does
+   about it.
 """
 import argparse
 import json
@@ -58,37 +56,37 @@ DEV_OVERLAY = "docker-compose.dev.yml"
 
 RADIO_MODES = ("reseau", "usb")
 
-# Fichiers qui portent de la donnee : jamais ecrases s'ils existent deja.
-# Chemins relatifs au repertoire de deploiement.
+# Files that carry data: never overwritten if they already exist. Paths are
+# relative to the deployment directory.
 #
-# zigbee2mqtt/configuration.yaml est le plus dangereux des trois : il porte le
-# network_key et le pan_id du reseau. L'ecraser ne « casse » pas zigbee2mqtt,
-# il en forme un AUTRE — et tous les equipements apparies restent sur
-# l'ancien, muets, sans le moindre message d'erreur.
+# zigbee2mqtt/configuration.yaml is the most dangerous of the three: it holds
+# the network_key and pan_id of the network. Overwriting it does not "break"
+# zigbee2mqtt, it forms ANOTHER network -- and every paired device stays on the
+# old one, silent, without a single error message.
 PRESERVED = (
     "config/configuration.yaml",
     "mosquitto/mosquitto.conf",
     "zigbee2mqtt/configuration.yaml",
 )
 
-# Fichiers rendus depuis le gabarit apres la copie, avec les memes @CLES@ que
-# le .env. Ceux de PRESERVED ne sont rendus que lorsqu'ils viennent d'etre
-# crees : zigbee2mqtt lit son port dans SON fichier, pas dans l'environnement,
-# donc la reponse du wizard doit y etre ecrite au premier passage — et jamais
-# au suivant.
+# Files rendered from the template after the copy, with the same @KEYS@ as
+# the .env. Those in PRESERVED are rendered only when just created:
+# zigbee2mqtt reads its port from ITS file, not from the environment, so the
+# wizard's answer must be written there on the first pass -- and never on a
+# later one.
 RENDERED = ("zigbee2mqtt/configuration.yaml",)
 
-# Repertoires qui portent le nom de ce package : SUPPRIMES puis recopies.
+# Directories that bear this package's name: DELETED then copied again.
 #
-# Ils vivent sous config/, que la regle 1 protege — mais la regle 1 protege de
-# la DONNEE, et ceux-ci portent du CODE. Une simple fusion y laisserait vivre
-# un module retire entre deux versions, ou un __pycache__ perime : des fichiers
-# fantomes que Home Assistant chargerait sans rien signaler.
+# They live under config/, which rule 1 protects -- but rule 1 protects DATA,
+# and these carry CODE. A plain merge would keep a module removed between two
+# versions, or a stale __pycache__, alive there: ghost files Home Assistant
+# would load without a word.
 #
-# La liste ne nomme QUE ce que ce package a depose. Les voisins de
-# custom_components/ appartiennent aux packages satellites et au proprietaire
-# de la machine ; les emporter reviendrait a desinstaller le garde-manger en
-# mettant a jour le socle.
+# The list names ONLY what this package laid down. The neighbours in
+# custom_components/ belong to the satellite packages and to the machine's
+# owner; taking them along would uninstall the pantry while updating the
+# base.
 OWNED_TREES = ("config/custom_components/personas_home",)
 
 
@@ -104,7 +102,7 @@ def text_answer(answers, key, default=""):
 
 
 def parse_env(text):
-    """Les cles definies dans un .env, dans l'ordre de lecture."""
+    """The keys defined in a .env, in reading order."""
     keys = []
     for line in text.splitlines():
         stripped = line.strip()
@@ -114,11 +112,11 @@ def parse_env(text):
 
 
 def merge_env(existing, rendered):
-    """Le .env existant, augmente des seules cles qu'il n'a pas encore.
+    """The existing .env, extended with only the keys it does not have yet.
 
-    Rien d'existant n'est touche : ni les valeurs, ni les commentaires, ni
-    l'ordre. Les cles nouvelles sont ajoutees en fin de fichier sous un
-    en-tete qui dit d'ou elles viennent.
+    Nothing existing is touched: not the values, not the comments, not the
+    order. New keys are appended at the end under a header saying where they
+    come from.
     """
     have = set(parse_env(existing))
     added = [line for line in rendered.splitlines()
@@ -131,18 +129,18 @@ def merge_env(existing, rendered):
 
 
 def scrub_dev_overlay(text):
-    """Retirer DEV_OVERLAY de COMPOSE_FILE dans un .env EXISTANT.
+    """Remove DEV_OVERLAY from COMPOSE_FILE in an EXISTING .env.
 
-    Regle 4 : DEV_OVERLAY est supprime du repertoire de deploiement a chaque
-    passage, y compris sur une reinstallation. Mais un .env deja present (donc
-    JAMAIS reecrit — regle 1) peut avoir ete rendu par une version anterieure
-    du hook, quand la surcouche etait encore deployee, et son COMPOSE_FILE la
-    nomme toujours. Une reference a un fichier absent dans COMPOSE_FILE rend
-    TOUTE commande `docker compose` impossible sur la pile — pas seulement
-    celles qui touchent au developpement, TOUTES, y compris `restart
-    homeassistant`. C'est la seule valeur d'un .env existant que ce hook a le
-    droit de reecrire, et seulement celle-la : jamais une cle absente, jamais
-    une valeur qui ne nomme pas un fichier que ce hook vient de retirer.
+    Rule 4: DEV_OVERLAY is deleted from the deployment directory on every
+    pass, reinstalls included. But an already present .env (so NEVER
+    rewritten -- rule 1) may have been rendered by an earlier version of the
+    hook, when the overlay was still deployed, and its COMPOSE_FILE still
+    names it. A reference to a missing file in COMPOSE_FILE makes EVERY
+    `docker compose` command impossible on the stack -- not only the
+    development ones, ALL of them, `restart homeassistant` included. It is
+    the only value of an existing .env this hook may rewrite, and only that
+    one: never a missing key, never a value that does not name a file this
+    hook has just removed.
     """
     lines = text.splitlines()
     for i, line in enumerate(lines):
@@ -167,11 +165,11 @@ def render_env(values):
 
 
 def copy_stack(dest):
-    """stack/ vers dest sans ecraser PRESERVED. Rend les nouveaux fichiers.
+    """Copy stack/ to dest without overwriting PRESERVED.
 
-    Retourne l'ensemble des chemins relatifs de PRESERVED qui ont ete CREES
-    par cette copie — ceux qui existaient deja n'y sont pas. L'appelant s'en
-    sert pour ne rendre les gabarits qu'au premier passage.
+    Returns the set of PRESERVED relative paths this copy CREATED -- those
+    that already existed are not in it. The caller uses it to render the
+    templates on the first pass only.
     """
     existing = {rel for rel in PRESERVED
                 if os.path.isfile(os.path.join(dest, rel))}
@@ -180,13 +178,13 @@ def copy_stack(dest):
         with open(os.path.join(dest, rel), "rb") as fh:
             saved[rel] = fh.read()
 
-    # Ce que ce package possede est retire AVANT la copie, qui le redepose
-    # entier. copytree n'offre pas de « remplacer » : sans ce passage, elle
-    # fusionne, et les fichiers d'une version anterieure restent.
+    # What this package owns is removed BEFORE the copy, which lays it down
+    # whole again. copytree has no "replace": without this pass it merges,
+    # and the files of an earlier version stay.
     #
-    # Seule l'absence est un cas normal. Toute autre erreur (un lien
-    # symbolique, un droit refuse) doit arreter la phase : l'avaler laisserait
-    # copytree ecrire a travers le lien, hors de ce que ce package possede.
+    # Absence is the only normal case. Any other error (a symbolic link, a
+    # denied permission) must stop the phase: swallowing it would let
+    # copytree write through the link, outside what this package owns.
     for rel in OWNED_TREES:
         path = os.path.join(dest, rel)
         if os.path.lexists(path):
@@ -194,10 +192,10 @@ def copy_stack(dest):
 
     shutil.copytree(STACK, dest, symlinks=True, dirs_exist_ok=True)
 
-    # Restaure ce que la copie vient d'ecraser. Sauver puis restaurer, plutot
-    # que filtrer la copie : copytree n'offre pas de « ne pas ecraser », et un
-    # ignore= sur les noms sauterait aussi le fichier lors d'une installation
-    # neuve, ou il doit bien etre depose.
+    # Restore what the copy just overwrote. Save then restore, rather than
+    # filtering the copy: copytree has no "do not overwrite", and an ignore=
+    # on the names would also skip the file on a fresh install, where it must
+    # be laid down.
     for rel, content in saved.items():
         with open(os.path.join(dest, rel), "wb") as fh:
             fh.write(content)
@@ -211,7 +209,7 @@ def copy_stack(dest):
 
 
 def render_file(path, values):
-    """Remplacer les @CLES@ d'un fichier depose, sur place."""
+    """Replace the @KEYS@ of a deployed file, in place."""
     with open(path) as fh:
         text = fh.read()
     for key, value in values.items():
@@ -230,7 +228,7 @@ def main():
     answers = ctx.get("answers") or {}
     root = args.root.rstrip("/") or "/"
 
-    # Regle 2 : valider avant de deposer le premier octet.
+    # Rule 2: validate before laying down the first byte.
     try:
         radio_mode = text_answer(answers, "radio_mode", "reseau")
         if radio_mode not in RADIO_MODES:
@@ -253,8 +251,8 @@ def main():
         print(f"home-manager install: {exc}", file=sys.stderr)
         return 1
 
-    # La surcouche USB n'est fusionnee qu'en mode USB : c'est une consequence
-    # du mode radio, pas une question de plus.
+    # The USB overlay is merged only in USB mode: it follows from the radio
+    # mode, it is not one more question.
     compose_files = "docker-compose.yml"
     if radio_mode == "usb":
         compose_files += ":docker-compose.usb.yml"
@@ -265,9 +263,9 @@ def main():
     emit({"event": "progress", "pct": 25, "msg": "Depose de la pile"})
     created = copy_stack(dest)
 
-    # Les gabarits deposes ne sont rendus qu'au premier passage : un fichier
-    # deja present porte la configuration reelle, et y reinjecter les reponses
-    # du wizard remplacerait le reseau Zigbee en service par un neuf.
+    # Deployed templates are rendered on the first pass only: a file already
+    # present carries the real configuration, and injecting the wizard's
+    # answers again would replace the live Zigbee network with a new one.
     for rel in RENDERED:
         if rel in created:
             render_file(os.path.join(dest, rel), values)
@@ -279,16 +277,16 @@ def main():
         with open(env_path) as fh:
             existing = fh.read()
         rendered = merge_env(existing, rendered)
-        # DEV_OVERLAY vient d'etre retire du repertoire de deploiement (regle
-        # 3), meme sur cette reinstallation. Si le COMPOSE_FILE que ce .env
-        # portait deja le nommait encore, le laisser tel quel casserait toute
-        # commande `docker compose` sur la pile — voir scrub_dev_overlay().
+        # DEV_OVERLAY has just been removed from the deployment directory
+        # (rule 4), even on this reinstall. If the COMPOSE_FILE this .env
+        # already carried still named it, leaving it as is would break every
+        # `docker compose` command on the stack -- see scrub_dev_overlay().
         rendered = scrub_dev_overlay(rendered)
         emit({"event": "progress", "pct": 75,
               "msg": ".env existant conserve, variables manquantes ajoutees"})
     with open(env_path, "w") as fh:
         fh.write(rendered)
-    # 0600 : le .env porte le mot de passe du broker.
+    # 0600: the .env carries the broker password.
     os.chmod(env_path, 0o600)
 
     emit({"event": "progress", "pct": 90,
