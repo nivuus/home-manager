@@ -1,0 +1,81 @@
+send_event:
+  name: Envoyer un événement
+  description: >-
+    Envoie un événement de vie, en texte libre, sur le canal « événements »
+    (ne bloque pas l'automation, aucune réponse attendue). Pour obtenir une
+    réponse, utiliser l'entité conversation, qui vise un autre correspondant.
+  fields:
+    text:
+      name: Texte
+      description: Le contenu/événement transmis à la persona.
+      required: true
+      example: "🔋 Pense à remplacer les piles du capteur cuisine."
+      selector:
+        text:
+          multiline: true
+    persona:
+      name: Persona
+      description: >-
+        Persona cible (par défaut celle du canal événements). Sans effet si
+        l'URL du canal est un endpoint complet : elle nomme déjà son
+        destinataire. Le cas est alors signalé dans le journal.
+      required: false
+      example: Hestia
+      selector:
+        text:
+    event_type:
+      name: Type d'événement
+      description: Type d'événement studio (défaut ha_automation).
+      required: false
+      example: ha_automation
+      selector:
+        text:
+
+send_feedback:
+  name: Envoyer un retour sur une entité
+  description: >-
+    Envoie un retour structuré sur une entité Home Assistant, fire-and-forget,
+    sur le canal « feedback » — les notifications et les réparations. Remplace
+    l'ancien rest_command.ha_ai_feedback retiré de configuration.yaml.
+  fields:
+    entity_id:
+      name: Entité
+      description: >-
+        L'objet du retour. Pas nécessairement une entité au sens du registre :
+        l'identifiant d'une notification persistante ou d'un ticket de
+        réparation convient aussi.
+      required: true
+      example: ha_notification
+      selector:
+        text:
+    event_type:
+      name: Type d'événement
+      description: Nature du retour, côté studio.
+      required: true
+      example: persistent_notification
+      selector:
+        text:
+    accepted:
+      name: Accepté
+      description: Le retour est-il positif (défaut oui).
+      required: false
+      default: true
+      selector:
+        boolean:
+    suggestion_id:
+      name: Identifiant de suggestion
+      description: Suggestion visée côté studio (défaut latest).
+      required: false
+      example: latest
+      selector:
+        text:
+    persona:
+      name: Persona
+      description: >-
+        Persona cible (par défaut celle du canal feedback). Sans effet si l'URL
+        du canal est un endpoint complet : elle nomme déjà son destinataire. Le
+        cas est alors signalé dans le journal.
+      required: false
+      example: home-manager
+      selector:
+        text:

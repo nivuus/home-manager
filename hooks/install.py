@@ -7,7 +7,7 @@ jour, et donc pas de fichier qu'on oublie d'ajouter en meme temps qu'un
 service. Deux exceptions, retirees APRES la copie : le gabarit d'environnement
 (il a fait son travail) et la surcouche de developpement.
 
-TROIS REGLES PORTENT LE RESTE.
+QUATRE REGLES PORTENT LE RESTE.
 
 1. RIEN QUI PORTE DE LA DONNEE N'EST ECRASE. config/ contient les automations,
    la base, les secrets et les jetons d'une maison entiere ; mosquitto/passwd
@@ -16,7 +16,7 @@ TROIS REGLES PORTENT LE RESTE.
    machine deja installee (`install.py --root /`), ou une reecriture
    detruirait tout cela sans bruit. Les cles absentes du .env sont AJOUTEES,
    les presentes ne sont pas touchees — SAUF UNE, COMPOSE_FILE, et seulement
-   pour lui retirer une reference que la regle 3 vient de rendre invalide
+   pour lui retirer une reference que la regle 4 vient de rendre invalide
    (voir scrub_dev_overlay()) : la seule reecriture d'une valeur existante que
    ce hook s'autorise, parce que la laisser telle quelle casse la pile plus
    surement qu'elle ne la protege.
@@ -27,7 +27,15 @@ TROIS REGLES PORTENT LE RESTE.
    Un mode radio inconnu doit faire echouer la phase avant la copie, pas au
    milieu.
 
-3. LE FICHIER DE DEVELOPPEMENT NE PART PAS. docker-compose.dev.yml monte des
+3. CE QUI PORTE LE NOM DU PACKAGE EST REMPLACE, PAS FUSIONNE.
+   config/custom_components/personas_home/ est du CODE depose sous un
+   repertoire que la regle 1 protege parce qu'il porte de la donnee. La copie
+   fusionne : un module retire entre deux versions, ou un __pycache__ perime,
+   survivrait a la mise a jour et Home Assistant le chargerait. Voir
+   OWNED_TREES — et la liste ne nomme que ce que ce package a depose, jamais
+   les integrations voisines.
+
+4. LE FICHIER DE DEVELOPPEMENT NE PART PAS. docker-compose.dev.yml monte des
    depots qui n'existent que sur la machine de son auteur ; docker creerait
    ailleurs des repertoires vides que Home Assistant chargerait comme des
    integrations cassees. Il est donc retire du repertoire de deploiement a
@@ -69,6 +77,19 @@ PRESERVED = (
 # donc la reponse du wizard doit y etre ecrite au premier passage — et jamais
 # au suivant.
 RENDERED = ("zigbee2mqtt/configuration.yaml",)
+
+# Repertoires qui portent le nom de ce package : SUPPRIMES puis recopies.
+#
+# Ils vivent sous config/, que la regle 1 protege — mais la regle 1 protege de
+# la DONNEE, et ceux-ci portent du CODE. Une simple fusion y laisserait vivre
+# un module retire entre deux versions, ou un __pycache__ perime : des fichiers
+# fantomes que Home Assistant chargerait sans rien signaler.
+#
+# La liste ne nomme QUE ce que ce package a depose. Les voisins de
+# custom_components/ appartiennent aux packages satellites et au proprietaire
+# de la machine ; les emporter reviendrait a desinstaller le garde-manger en
+# mettant a jour le socle.
+OWNED_TREES = ("config/custom_components/personas_home",)
 
 
 def emit(event):
@@ -112,7 +133,7 @@ def merge_env(existing, rendered):
 def scrub_dev_overlay(text):
     """Retirer DEV_OVERLAY de COMPOSE_FILE dans un .env EXISTANT.
 
-    Regle 3 : DEV_OVERLAY est supprime du repertoire de deploiement a chaque
+    Regle 4 : DEV_OVERLAY est supprime du repertoire de deploiement a chaque
     passage, y compris sur une reinstallation. Mais un .env deja present (donc
     JAMAIS reecrit — regle 1) peut avoir ete rendu par une version anterieure
     du hook, quand la surcouche etait encore deployee, et son COMPOSE_FILE la
@@ -158,6 +179,18 @@ def copy_stack(dest):
     for rel in existing:
         with open(os.path.join(dest, rel), "rb") as fh:
             saved[rel] = fh.read()
+
+    # Ce que ce package possede est retire AVANT la copie, qui le redepose
+    # entier. copytree n'offre pas de « remplacer » : sans ce passage, elle
+    # fusionne, et les fichiers d'une version anterieure restent.
+    #
+    # Seule l'absence est un cas normal. Toute autre erreur (un lien
+    # symbolique, un droit refuse) doit arreter la phase : l'avaler laisserait
+    # copytree ecrire a travers le lien, hors de ce que ce package possede.
+    for rel in OWNED_TREES:
+        path = os.path.join(dest, rel)
+        if os.path.lexists(path):
+            shutil.rmtree(path)
 
     shutil.copytree(STACK, dest, symlinks=True, dirs_exist_ok=True)
 

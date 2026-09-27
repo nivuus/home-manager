@@ -53,6 +53,79 @@
 - **Le watchdog OTBR reste dehors**, désactivé en production le 2026-05-04 :
   213 redémarrages de passerelle par semaine pour zéro récupération.
 
+## personas_home : trois canaux, et pourquoi le code est ici
+
+L'intégration `personas_home` vit dans `stack/config/custom_components/`. C'est
+le **seul** contenu de `config/` que ce dépôt versionne : tout le reste de ce
+répertoire porte de la donnée et relève du propriétaire de la machine (règle 1
+de `hooks/install.py`), alors que ceci est du code.
+
+**Trois canaux, trois correspondants, chacun avec son URL, sa persona et son
+jeton.** Ils n'en faisaient qu'un jusqu'au 2026-09-06 :
+
+| Canal | Sert | Destination au 2026-09-06 |
+|---|---|---|
+| `url` | entité `conversation` (**synchrone**) | studio personas, persona Hestia |
+| `event_url` | `personas_home.send_event` | webhook de Bleuenn |
+| `feedback_url` | `personas_home.send_feedback` | webhook de Bleuenn |
+
+**Pourquoi la conversation n'a pas suivi les autres chez Bleuenn.** Elle est le
+seul canal synchrone : elle poste et *attend* la réponse. Quatre appelants en
+dépendent — `scripts.yaml:837` et trois automations, dont le résumé Hestia qui
+**parse le JSON renvoyé**. Le webhook de Bleuenn répond 202 sans corps : y
+repointer ce canal aurait rendu ces quatre appels muets sans une seule erreur.
+
+**Deux formes d'URL, lues sur l'URL elle-même** (`payloads.webhook_endpoint`) :
+sans chemin (`http://127.0.0.1:8080`) c'est une base studio et la persona lui
+est ajoutée ; avec un chemin (`https://iris…/h/<secret>`) c'est déjà l'endpoint
+complet, utilisé verbatim — le secret EST le chemin, et lui ajouter quoi que ce
+soit donne 404. Sur un endpoint complet la persona ne nomme plus rien : un
+`persona:` passé par une automation est **journalisé comme ignoré**, pas
+silencieusement jeté.
+
+**Le jeton est par canal, et facultatif.** Les webhooks de Bleuenn portent leur
+secret dans le chemin ; leur envoyer le jeton du studio le divulguerait à un
+hôte qui n'a rien à en faire. Un jeton vide = aucun en-tête `Authorization`, et
+un canal n'hérite jamais du jeton d'un autre.
+
+**Ce que la sonde du formulaire refuse, et ce qu'elle laisse passer.** C'est le
+seul endroit où une erreur d'URL est encore rattrapable, puisque les deux
+services sont fire-and-forget. Elle distingue trois échecs, et l'**ordre des
+`except` EST le comportement** (les trois sont des sous-classes de
+`ClientConnectorError`) :
+
+- l'hôte répond 404/405/401 → **refusé** : c'est la confusion base/endpoint ;
+- **TLS échoue → refusé.** Ce n'est pas hypothétique : un nom `*.ts.net`
+  inventé résout par un joker et échoue *ici*, pas sur le DNS. Classé après
+  `ClientConnectorError`, il passait pour « simplement éteint » — c'est
+  arrivé le 2026-09-06, et la sonde acceptait un hôte bidon ;
+- DNS introuvable → refusé ;
+- connexion refusée ou expirée → **accepté, avec une ligne de journal**. Le
+  studio était éteint le jour de la configuration : refuser là-dessus rendait
+  une configuration légitime impossible à enregistrer, et la panne est bruyante
+  à l'exécution (un WARNING par appel).
+
+**Les trois payloads sont dans `payloads.py`, qui n'importe pas Home
+Assistant.** Délibéré : les deux services sont fire-and-forget, donc une forme
+qui dérive ne produit aucune erreur nulle part. `make test` (python3 seul) est
+le seul endroit où ce contrat peut encore échouer. `details` porte une
+**chaîne** sur le canal événements et un **objet** sur le canal feedback : d'où
+deux services et non un service à branches.
+
+**`OWNED_TREES` dans `hooks/install.py`.** La copie de `stack/` fusionne ; un
+module retiré entre deux versions, ou un `__pycache__` périmé, survivrait à la
+mise à jour et Home Assistant le chargerait. Ce répertoire est donc supprimé
+puis recopié — la règle 2 de `home-stock`, apprise là-bas. La liste ne nomme
+que ce que ce paquet dépose : emporter les voisins de `custom_components/`
+désinstallerait le garde-manger en mettant à jour le socle.
+
+**Ce qui reste invisible.** La bascule des deux appels de
+`config/automations.yaml` (automation `bleuenn_relay_persistent_notif`), le
+retrait du bloc `rest_command: ha_ai_feedback` de `config/configuration.yaml`
+et les URLs de production (dans `.storage`, jamais dans le dépôt) ont eu lieu
+**en place, sans commit**. Cette section est la seule trace qu'ils ont changé
+le 2026-09-06.
+
 ## Dette : la génération 1 des tablettes murales
 
 Trois pièces **ont l'air vivantes** et ne le sont plus depuis le 2026-08-02 :
