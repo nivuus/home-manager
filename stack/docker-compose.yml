@@ -202,3 +202,31 @@ services:
     init: true
     ports:
       - "127.0.0.1:4416:4416"
+
+  # Worker OAuth Stellantis. L'integration stellantis_vehicles ne sait pas
+  # obtenir un code d'autorisation seule : elle delegue le parcours de login a
+  # un navigateur pilote. Par defaut elle pointe vers une instance publique
+  # hebergee sur Render, a qui elle transmet l'email et le mot de passe
+  # MyPeugeot en clair. Ce service est cette instance, en local.
+  #
+  # Publie sur la SEULE boucle locale, comme docker-socket-proxy et
+  # bgutil-pot-provider : Home Assistant est en network_mode host, il le joint
+  # donc sur http://127.0.0.1:3000, et personne d'autre.
+  #
+  # Il n'est sollicite qu'a la configuration et a la re-authentification de
+  # l'integration. Chromium reste neanmoins demarre en permanence, et le
+  # healthcheck du worker le relance s'il est mort : c'est ce qui evite un
+  # premier appel en echec le jour ou la re-authentification est necessaire.
+  stellantis-worker:
+    container_name: stellantis-worker
+    build: ./stellantis-worker
+    restart: unless-stopped
+    init: true
+    ports:
+      - "127.0.0.1:3000:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:3000/health', timeout=30)\""]
+      interval: 5m
+      timeout: 45s
+      retries: 3
+      start_period: 30s

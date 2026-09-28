@@ -25,7 +25,8 @@ DEV = STACK / "docker-compose.dev.yml"
 
 SERVICES = ("homeassistant", "docker-socket-proxy", "mosquitto",
             "zigbee2mqtt", "otbr", "matterjs-server",
-            "music-assistant", "bgutil-pot-provider")
+            "music-assistant", "bgutil-pot-provider",
+            "stellantis-worker")
 
 failures = []
 
@@ -41,7 +42,7 @@ main = yaml.safe_load(MAIN.read_text())
 # renommer le deploiement n'orpheline pas les conteneurs.
 check("nom de projet", main.get("name"), "home-manager")
 
-check("les huit services sont declares", sorted(main["services"]),
+check("les neuf services sont declares", sorted(main["services"]),
       sorted(SERVICES))
 
 # Aucun chemin de machine, dans aucun des deux fichiers deployes.
