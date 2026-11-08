@@ -89,6 +89,14 @@ check("proxy: socket monte en lecture seule",
       in main["services"]["docker-socket-proxy"]["volumes"], True)
 check("proxy: exec refuse",
       main["services"]["docker-socket-proxy"]["environment"]["EXEC"], 0)
+# POST=1 (the marketplace creates containers) makes the proxy root-equivalent:
+# no other service may share its network.
+check("proxy: reseau dedie",
+      main["services"]["docker-socket-proxy"]["networks"], ["docker-api"])
+check("proxy: aucun voisin sur son reseau",
+      [n for n, svc in main["services"].items()
+       if n != "docker-socket-proxy" and "docker-api" in (svc.get("networks") or [])],
+      [])
 
 # Le generateur de jetons PO n'ecoute que sur la boucle locale. Expose au LAN,
 # il offrirait a quiconque un generateur de jetons YouTube tournant sous
