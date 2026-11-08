@@ -9,6 +9,7 @@ sans bruit.
 Run: python3 tests/test_install_hook.py
 """
 import json
+import re
 import pathlib
 import subprocess
 import sys
@@ -117,6 +118,23 @@ with tempfile.TemporaryDirectory() as root:
     check("le bootstrap zigbee2mqtt porte le port repondu",
           "tcp://10.0.0.5:7638" in z2m, True)
 
+    # The frontend can permit joins and push firmware: it must never come up
+    # without a token, and the token must be random, private and referenced.
+    check("z2m frontend references the secret token",
+          "auth_token: '!secret.yaml auth_token'" in z2m, True)
+    secret = dest / "zigbee2mqtt" / "secret.yaml"
+    check("z2m secret.yaml is created", secret.is_file(), True)
+    check("z2m secret.yaml is readable by root only",
+          oct(secret.stat().st_mode & 0o777), "0o600")
+    first_token = secret.read_text()
+    check("z2m token is 64 random hex chars",
+          bool(re.fullmatch(r"auth_token: [0-9a-f]{64}\n", first_token)), True)
+
+with tempfile.TemporaryDirectory() as root:
+    run(root)
+    other = (pathlib.Path(root) / DEST_REL / "zigbee2mqtt" / "secret.yaml").read_text()
+    check("two installs get different z2m tokens", other != first_token, True)
+
 # --- mode USB ------------------------------------------------------------
 with tempfile.TemporaryDirectory() as root:
     run(root, {**ANSWERS, "radio_mode": "usb"})
@@ -137,6 +155,8 @@ with tempfile.TemporaryDirectory() as root:
     (dest / "config" / "secrets.yaml").write_text("latitude: 48.85\n")
     (dest / "config" / "home-assistant_v2.db").write_text("base sqlite")
     (dest / "mosquitto" / "passwd").write_text("mqtt:$7$hash\n")
+    # The owner's frontend token: replacing it would lock the browser out.
+    (dest / "zigbee2mqtt" / "secret.yaml").write_text("auth_token: owner-token\n")
     # LE fichier le plus dangereux du lot : il porte network_key et pan_id.
     # L'ecraser ne casse pas zigbee2mqtt, il forme un AUTRE reseau — et les
     # quelques dizaines d'equipements apparies restent sur l'ancien, muets.
@@ -159,6 +179,9 @@ with tempfile.TemporaryDirectory() as root:
     check("cles du reseau Zigbee intactes",
           (dest / "zigbee2mqtt" / "configuration.yaml").read_text(),
           "advanced:\n  network_key: [1, 2, 3]\n  pan_id: 28047\n")
+    check("existing z2m frontend token is kept",
+          (dest / "zigbee2mqtt" / "secret.yaml").read_text(),
+          "auth_token: owner-token\n")
 
     values = env_values(dest / ".env")
     check("les valeurs existantes du .env ne sont pas ecrasees",

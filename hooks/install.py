@@ -44,6 +44,7 @@ FOUR RULES CARRY THE REST.
 import argparse
 import json
 import os
+import secrets
 import shutil
 import sys
 
@@ -75,6 +76,11 @@ PRESERVED = (
 # wizard's answer must be written there on the first pass -- and never on a
 # later one.
 RENDERED = ("zigbee2mqtt/configuration.yaml",)
+
+# The zigbee2mqtt frontend token, referenced by the template as
+# '!secret.yaml auth_token'. Created once with a random value, never
+# overwritten: replacing it would only lock the owner's browser out.
+Z2M_SECRET = "zigbee2mqtt/secret.yaml"
 
 # Directories that bear this package's name: DELETED then copied again.
 #
@@ -208,6 +214,22 @@ def copy_stack(dest):
     return set(PRESERVED) - existing
 
 
+def ensure_z2m_secret(dest):
+    """Create zigbee2mqtt/secret.yaml with a random frontend token, once.
+
+    O_EXCL makes "create only if absent" a single atomic step: an existing
+    file, whatever it holds, is left exactly as it is.
+    """
+    path = os.path.join(dest, Z2M_SECRET)
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        return False
+    with os.fdopen(fd, "w") as fh:
+        fh.write(f"auth_token: {secrets.token_hex(32)}\n")
+    return True
+
+
 def render_file(path, values):
     """Replace the @KEYS@ of a deployed file, in place."""
     with open(path) as fh:
@@ -269,6 +291,8 @@ def main():
     for rel in RENDERED:
         if rel in created:
             render_file(os.path.join(dest, rel), values)
+
+    ensure_z2m_secret(dest)
 
     emit({"event": "progress", "pct": 65, "msg": "Rendu de la configuration"})
     rendered = render_env(values)

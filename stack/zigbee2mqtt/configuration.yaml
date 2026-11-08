@@ -22,3 +22,12 @@ serial:
   # et seule cette ligne change.
   port: tcp://@SLZB_HOST@:@ZIGBEE_PORT@
   adapter: zstack
+
+# The web interface can permit joins, remove devices and push firmware: it is
+# never left open to the LAN. hooks/install.py writes a random token to
+# secret.yaml (0600) next to this file on the first install and never
+# overwrites it; the browser asks for it once.
+frontend:
+  enabled: true
+  port: 8100
+  auth_token: '!secret.yaml auth_token'
