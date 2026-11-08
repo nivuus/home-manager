@@ -75,6 +75,12 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:
       - "127.0.0.1:2375:2375"
+    # Its own network, never the project default one: POST=1 lets a client
+    # create containers, so any neighbour on a shared bridge (mosquitto,
+    # bgutil-pot-provider, stellantis-worker) could start a privileged one and
+    # own the host. Home Assistant reaches it through the loopback port above.
+    networks:
+      - docker-api
 
   mosquitto:
     container_name: mosquitto
@@ -230,3 +236,6 @@ services:
       timeout: 45s
       retries: 3
       start_period: 30s
+
+networks:
+  docker-api: {}
