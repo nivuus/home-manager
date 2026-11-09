@@ -52,7 +52,11 @@
   acl-file plugin and `listener_allow_anonymous true`, nothing else does.
   `per_listener_settings` is gone (deprecated in 2.1): do not bring it back.
   `dynamic-security.json` belongs to the broker once created, and
-  `mosquitto.conf` is only rewritten when it matches `LEGACY_CONFS`. Rules,
+  `mosquitto.conf` is only rewritten when it matches `LEGACY_CONFS`. Order
+  the hook guarantees: admin secret in `.env`, then a complete accounts
+  file, then the Dynamic Security conf; writes in `mosquitto/` (uid 1883's)
+  go through `hooks/safe_files.py`. The image is pinned >= 2.1 by digest.
+  Rules,
   files and tests: [`docs/claude/mqtt-accounts.md`](docs/claude/mqtt-accounts.md);
   design and operator steps:
   `docs/superpowers/specs/2026-11-09-mqtt-per-client-accounts-design.md`.

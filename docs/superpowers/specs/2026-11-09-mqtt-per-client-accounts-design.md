@@ -1,7 +1,7 @@
 # Per-client MQTT accounts (Mosquitto Dynamic Security) — design
 
-Date: 2026-11-09. Branch `feat/mqtt-dynsec`. Broker: `eclipse-mosquitto:latest`
-= Mosquitto 2.1.2.
+Date: 2026-11-09. Branch `feat/mqtt-dynsec`. Broker: Mosquitto 2.1.2,
+`eclipse-mosquitto:2.1.2-alpine` pinned by digest.
 
 ## Problem
 
@@ -157,33 +157,72 @@ side (review new MQTT entities), out of scope.
 
 ## Migration of an existing install (hooks/install.py + hooks/mqtt_accounts.py)
 
-`mosquitto/mosquitto.conf` stays installation data (PRESERVED). The hook:
+`mosquitto/mosquitto.conf` stays installation data (PRESERVED).
 
-1. **Plans before the first write** (rule 2 of `install.py`): classifies the
+**Invariant: a Dynamic Security configuration is never on disk without an
+accounts file that carries every password-file account and the admin, and
+that accounts file is never on disk without its admin secret saved in
+`.env`.** Mosquitto 2.1 generates an admin-only accounts file when the one it
+is configured with is missing; breaking the invariant, even for the length of
+a crash, locks the whole house out. The hook:
+
+1. **Plans before the first write** (rule 2 of `install.py`). Classifies the
    installed configuration by its directives, comments and blank lines
    ignored — `current` (the new template), `legacy` (a version this package
-   laid down, listed in `LEGACY_CONFS`), `unknown`, or `absent`; reads and
-   validates the password file. Errors exit 1 with nothing changed.
-2. Lays the stack down as before.
-3. If the configuration is `legacy`, `current` or `absent` and the JSON does
-   not exist: writes the JSON (temp file, chown 1883 when root, rename).
-4. If `legacy`: copies the configuration to `mosquitto/mosquitto.conf.pre-dynsec`
-   (once — an existing backup is kept) and rewrites it **in place** with the
-   template. In place matters: the file is bind-mounted alone into the
-   container, and a rename would leave the mount on the old inode.
-5. If `unknown`: touches neither file, prints a WARNING on stderr and in the
+   laid down, listed in `LEGACY_CONFS`), `unknown`, or `absent`. Reads and
+   validates the password file. **If an accounts file already exists and the
+   hook is about to put a Dynamic Security configuration on disk (`legacy` or
+   `absent`), it must name the admin and every password-file account**;
+   otherwise the phase stops and names the missing accounts. (Not checked
+   once `current`: the procedure's last step deletes `mqtt` on purpose.)
+   Refuses any symbolic link or non-regular file at the broker directory,
+   the configuration, the password file, the accounts file or the backup.
+   Any refusal exits 1 with nothing written.
+2. If a new admin secret was drawn: writes it to `.env` first (temp file
+   created `O_EXCL|O_NOFOLLOW` with mode 0600, fsync, rename, directory
+   fsync). A re-run after a later failure reuses it.
+3. If the configuration is `legacy`, `current` or `absent` and no accounts
+   file exists: writes it the same way, `fchown` to 1883 when root.
+4. Lays the stack down. `copytree` now **skips** every PRESERVED file that
+   exists instead of overwriting it and writing it back afterwards (the old
+   save/restore left the packaged Dynamic Security configuration on disk
+   between the two). On a fresh install this is where the template appears —
+   after step 3.
+5. If `legacy`: creates `mosquitto/mosquitto.conf.pre-dynsec` (`O_EXCL`,
+   fsync; an existing regular backup is kept), then rewrites the
+   configuration **in place** (`O_NOFOLLOW`, truncate, fsync). In place
+   matters: the file is bind-mounted alone into the container, and a rename
+   would leave the mount on the old inode.
+6. If `unknown`: touches neither file, prints a WARNING on stderr and in the
    progress events, and succeeds. Failing would block every future update of
-   the package for a hand-edited broker file; the warning names this document.
-6. Appends `MQTT_ADMIN_PASSWORD` to `.env` when it drew a new one.
+   the package for a hand-edited broker file.
+
+**Why the symlink care.** The broker's data directory belongs to uid 1883, the
+uid the broker runs as, and the hook writes there as root. A compromised
+broker could plant `passwd -> /etc/shadow` (its `$6$` lines would be "carried
+over" into a file uid 1883 reads) or `mosquitto.conf.pre-dynsec -> <any file>`
+(root would overwrite it). All reads and writes there go through
+`hooks/safe_files.py`: `O_NOFOLLOW` everywhere, `O_EXCL` creation, a stale
+temporary unlinked (the link, never its target) before an exclusive create.
 
 The live configuration differs from the 2026-08-28 template only in comments,
 so it is recognised as `legacy` (proven on a copy).
 
 The hook does not restart the broker (the activate phase only starts services
 without a container), so **nothing changes on the live broker until the
-operator restarts it**. Re-running the hook is a no-op: the JSON exists, the
+operator recreates it**. Re-running the hook is a no-op: the JSON exists, the
 configuration is `current`, the `.env` key is present — checked by the
 engine's idempotence harness, as root and as an unprivileged user.
+
+**Image.** `stack/docker-compose.yml` pins
+`eclipse-mosquitto:2.1.2-alpine@sha256:75d6662d…` (Docker Hub has no plain
+`2.1.2` tag; `2.1-alpine`, `2` and `latest` point at the same digest on
+2026-11-09). The configuration needs >= 2.1: a 2.0.22 broker refuses it at
+start (`Error: Unknown configuration variable "plugin_load"`, proven). The
+hook cannot see which image the running container uses without querying the
+live container, which it must not do; `tests/test_mqtt_accounts.py` instead
+fails if the pin is removed or drops below 2.1, and step 0 below checks the
+running broker.
 
 ## Live migration — operator steps
 
@@ -193,9 +232,13 @@ cd /opt/nivuus/home-manager
 grep -c '^plugin_use' mosquitto/mosquitto.conf        # 4
 ls -l mosquitto/dynamic-security.json mosquitto/mosquitto.conf.pre-dynsec
 grep -c '^MQTT_ADMIN_PASSWORD=' .env                 # 1
+grep -c '"username": "mqtt"' mosquitto/dynamic-security.json   # 1
 
-# 1. Apply: restart the broker. Clients reconnect within seconds, still as mqtt.
-docker restart mosquitto
+# 1. Apply: recreate the broker on the pinned 2.1 image (a plain restart
+#    would keep the old container's image). Clients reconnect within seconds,
+#    still as mqtt.
+docker compose up -d mosquitto
+docker exec mosquitto mosquitto -h | head -1          # mosquitto version 2.1.x
 grep -aE 'dynamic-security|acl-file|Error' mosquitto/mosquitto.log | tail
 ```
 
@@ -208,7 +251,7 @@ environment, the container shell expands it into a here-document read with
 ```bash
 export MQTT_ADMIN_PASSWORD="$(sed -n 's/^MQTT_ADMIN_PASSWORD=//p' /opt/nivuus/home-manager/.env)"
 mqctl() {
-  docker exec -i -e MQTT_ADMIN_PASSWORD mosquitto sh -c 'exec 3<<EOF
+  docker exec -i -e MQTT_ADMIN_PASSWORD "${MQTT_BROKER:-mosquitto}" sh -c 'exec 3<<EOF
 -u nivuus-admin
 -P $MQTT_ADMIN_PASSWORD
 EOF
@@ -271,9 +314,43 @@ docker restart mosquitto
 Every client still configured as `mqtt` works again. Clients already moved to
 a per-device account do not (they are unknown to the password file): move
 them back to `mqtt`, or add them with `mosquitto_passwd` first. The JSON stays
-on disk, harmless and ready for the next attempt. A later package update would
-migrate the configuration again (it is recognised as `legacy`); to stay on the
-password file, edit any directive (it becomes `unknown` and is left alone).
+on disk, harmless and ready for the next attempt.
+
+A later package update migrates the configuration again (it is recognised as
+`legacy`), but only if that accounts file still names the admin and **every**
+account of the password file. An account added to `passwd` while rolled back
+(or `mqtt` deleted from the JSON before the rollback) makes the hook stop and
+name it. Two ways out (`mosquitto_ctrl -f <file>` only edits passwords
+offline: `createClient` and `addClientRole` with `-f` exit 0 and change
+nothing — tested):
+
+- **Start over from the password file**: move the JSON aside
+  (`mv mosquitto/dynamic-security.json mosquitto/dynamic-security.json.old`)
+  and re-run the install phase; it is recreated with every `passwd` account
+  and the `.env` admin secret. Per-device clients of the old file must be
+  created again.
+- **Keep the per-device clients**: edit a COPY with a throwaway broker
+  (never the live data directory: a second broker would share
+  `mosquitto.db`), then put it back:
+
+```bash
+IMG=eclipse-mosquitto:2.1.2-alpine@sha256:75d6662dee52c947dc9dd9c29f1d8d7ffef78ddaf38001caa09755681e8bbc98
+W=$(mktemp -d /root/dynsec-edit.XXXX)
+cp /opt/nivuus/home-manager/mosquitto/dynamic-security.json "$W/"
+printf 'plugin_load dynsec /usr/lib/mosquitto_dynamic_security.so\nplugin_opt_config_file /mosquitto/data/dynamic-security.json\nlistener 1883\nplugin_use dynsec\n' > "$W/mosquitto.conf"
+docker run --rm -d --network none --name dynsec-edit -v "$W:/mosquitto/data" \
+  -v "$W/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro" "$IMG"
+# mqctl as above, aimed at the copy: export MQTT_BROKER=dynsec-edit (unset it after)
+#   printf '%s\n%s\n' "$pw" "$pw" | mqctl createClient <user>; mqctl addClientRole <user> <role>
+docker rm -f dynsec-edit
+install -o 1883 -g 1883 -m 0600 "$W/dynamic-security.json" /opt/nivuus/home-manager/mosquitto/dynamic-security.json
+```
+
+The hook refuses rather than merging the missing accounts itself: merging
+would silently hand them `legacy-full-access`, while the point of the
+migration is that each account's access is a decision. To stay on the
+password file, edit any directive (the configuration becomes `unknown` and is
+left alone).
 
 ## Evidence (tests)
 
@@ -281,8 +358,16 @@ password file, edit any directive (it becomes `unknown` and is left alone).
   file parsing, the `$7$` encoder verified like Mosquitto verifies, the role
   table (only HA, agent, operator, legacy may publish
   `system_agent/nivuus/reboot/set`), every install path (fresh, legacy,
-  edited, existing JSON, reused secret, refusals before any write),
-  idempotence.
+  edited, existing JSON complete or missing an account or the admin,
+  reused secret, refusals before any write), idempotence, the image pin.
+- `tests/test_mqtt_migration_safety.py` (in `make test`): the order under
+  failure (an accounts write that fails leaves the legacy configuration, no
+  template on a fresh install, and the admin secret already in a 0600 `.env`,
+  which the re-run reuses) and planted symbolic links (configuration,
+  password file, accounts file, backup, broker directory: refused, target
+  untouched; stale temporary: replaced, target untouched). A mutation run
+  (copy before accounts, `O_NOFOLLOW`/`O_EXCL` removed) turns 6 checks red —
+  including the password file pointing at a shadow-style file being read.
 - `tests/broker_dynsec_container.py` (`make test-broker`, root + docker):
   throwaway `--network none` containers of the compose's image, clients via
   `docker exec`. Legacy broker → hook → migrated broker; 67 checks: legacy
@@ -304,5 +389,8 @@ password file, edit any directive (it becomes `unknown` and is left alone).
   '%u'" — same lines as before, harmless.
 - A fresh install still lacks `acl_meross` and the TLS certificates, which the
   configuration references (pre-existing; unchanged by this work).
-- `eclipse-mosquitto:latest` is not pinned; the configuration needs >= 2.1
-  (`plugin_load`, `plugin_use`, `listener_allow_anonymous`).
+- The pinned digest is a newer build of 2.1.2 than the one running live
+  (local `latest`, created 2026-06-22); the container proof ran on the pinned
+  one, the live-hash proof on the live one.
+- A crash between `rename` and the directory `fsync` is covered by the
+  filesystem's own ordering, not by a test.

@@ -71,4 +71,4 @@
 # means no such account is created.
 - key: mqtt_password
   type: secret
-  label: "Mot de passe du compte MQTT « mqtt » (vide = ne pas modifier)"
+  label: "Password of the shared MQTT account \"mqtt\", created on a fresh install only (empty = no such account)"
