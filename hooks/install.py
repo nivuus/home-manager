@@ -26,12 +26,12 @@ FOUR RULES CARRY THE REST.
    mode must fail the phase before the copy, not halfway through it.
 
 3. WHAT BEARS THE PACKAGE'S NAME IS REPLACED, NOT MERGED.
-   config/custom_components/personas_home/ is CODE laid down under a
-   directory that rule 1 protects because it carries data. The copy merges:
-   a module removed between two versions, or a stale __pycache__, would
-   survive the update and Home Assistant would load it. See OWNED_TREES --
-   the list names only what this package laid down, never the neighbouring
-   integrations.
+   config/custom_components/personas_home/ and nivuus_vpn/ are CODE laid
+   down under a directory that rule 1 protects because it carries data. The
+   copy merges: a module removed between two versions, or a stale
+   __pycache__, would survive the update and Home Assistant would load it.
+   See OWNED_TREES -- the list names only what this package laid down, never
+   the neighbouring integrations.
 
 4. THE DEVELOPMENT FILE DOES NOT SHIP. docker-compose.dev.yml mounts
    repositories that exist only on its author's machine; elsewhere docker
@@ -87,7 +87,10 @@ RENDERED = ("zigbee2mqtt/configuration.yaml",)
 # custom_components/ belong to the satellite packages and to the machine's
 # owner; taking them along would uninstall the pantry while updating the
 # base.
-OWNED_TREES = ("config/custom_components/personas_home",)
+OWNED_TREES = (
+    "config/custom_components/personas_home",
+    "config/custom_components/nivuus_vpn",
+)
 
 
 def emit(event):

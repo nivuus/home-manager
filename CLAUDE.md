@@ -126,6 +126,33 @@ et les URLs de production (dans `.storage`, jamais dans le dépôt) ont eu lieu
 **en place, sans commit**. Cette section est la seule trace qu'ils ont changé
 le 2026-09-06.
 
+## nivuus_vpn : le formulaire d'envoi du VPN invités
+
+Deuxième intégration versionnée ici (`stack/config/custom_components/nivuus_vpn/`,
+dans `OWNED_TREES` comme `personas_home`). Le VPN invités tourne dans l'agent
+système (`nivuus/mqtt`, feature `vpn`) ; son interrupteur et son état arrivent
+par la découverte MQTT. MQTT ne transporte ni fichier ni secret hors des états
+d'entité : cette intégration n'existe que pour envoyer le `.ovpn`, le CA
+facultatif, l'identifiant et le mot de passe à l'agent.
+
+- **Canal** : WebSocket de l'agent, `ws://127.0.0.1:8766` (HA est en
+  `network_mode: host`, l'agent n'écoute que sur la boucle locale). Jeton =
+  `NIVUUS_WS_TOKEN` de `/etc/mqtt-system-agent.env`, collé dans le flux de
+  configuration, seule donnée gardée dans l'entrée avec l'hôte et le port.
+- **Le flux d'options renvoie des options VIDES** : ni le mot de passe ni le
+  profil n'atteignent `.storage`. Les octets lus restent en mémoire du flux
+  jusqu'à sa fin, parce que `file_upload` supprime un fichier dès sa lecture :
+  sans cela, une erreur de mot de passe obligeait à rechoisir les fichiers.
+- **Profil transmis à l'octet près** (UTF-8 strict, ni BOM retiré ni fin de
+  ligne convertie) : l'agent valide et normalise, pas HA. Un fichier non UTF-8
+  est refusé sur son champ.
+- **Import réussi ≠ tunnel monté** : un état `error` après l'import s'affiche
+  en erreur de formulaire avec le `lastError` de l'agent, jamais en succès.
+- **HA 2026.11 valide avec `probatio`**, pas voluptuous : `homeassistant/__init__.py`
+  aliase `voluptuous` vers probatio, mais le cœur et cette intégration
+  l'importent directement. Contrat du protocole dans `payloads.py`, testé par
+  `tests/test_vpn_payloads.py` sans HA.
+
 ## Dette : la génération 1 des tablettes murales
 
 Trois pièces **ont l'air vivantes** et ne le sont plus depuis le 2026-08-02 :
