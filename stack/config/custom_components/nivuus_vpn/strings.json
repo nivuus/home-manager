@@ -1,0 +1,59 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Nivuus guest VPN",
+        "description": "Connect to the Nivuus system agent, which runs the guest network's VPN. The upload form is then under this integration's Configure button.",
+        "data": {
+          "host": "Agent host",
+          "port": "Agent port",
+          "token": "Agent token"
+        },
+        "data_description": {
+          "host": "The agent listens on this machine only: keep 127.0.0.1.",
+          "port": "The agent's WebSocket port.",
+          "token": "NIVUUS_WS_TOKEN from /etc/mqtt-system-agent.env on the server."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "The agent cannot be reached at this address.",
+      "invalid_auth": "The agent refused this token.",
+      "timeout": "The agent did not answer in time.",
+      "agent_error": "The agent refused the request: {reason}"
+    },
+    "abort": {
+      "already_configured": "The agent is already configured.",
+      "single_instance_allowed": "The agent is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Guest VPN profile",
+        "description": "Upload the profile from your VPN provider. It replaces the current one; the username and password are sent to the agent and not kept by Home Assistant.",
+        "data": {
+          "ovpn_file": "OpenVPN profile (.ovpn)",
+          "ca_file": "CA certificate (optional)",
+          "username": "VPN username",
+          "password": "VPN password"
+        },
+        "data_description": {
+          "ovpn_file": "The .ovpn file your provider gives for the chosen server.",
+          "ca_file": "Only for providers that ship the CA as a separate .crt or .pem file.",
+          "username": "The username of your VPN account, not of Home Assistant.",
+          "password": "The password of your VPN account."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "The agent cannot be reached. Check the integration's address.",
+      "invalid_auth": "The agent refused the stored token. Remove and add the integration again with the current token.",
+      "timeout": "The agent did not answer in time. The import may still be running: check the guest VPN state.",
+      "agent_error": "The agent refused the profile: {reason}",
+      "activation_failed": "The profile was saved, but the tunnel did not come up: {reason}",
+      "not_utf8": "This file is not UTF-8 text.",
+      "upload_missing": "This upload is no longer available. Choose the file again."
+    }
+  }
+}

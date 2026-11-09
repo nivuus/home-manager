@@ -268,6 +268,25 @@ with tempfile.TemporaryDirectory() as root:
     check("l'integration d'un autre package n'est pas emportee",
           (voisin / "__init__.py").read_text(), "# appartient a home-stock\n")
 
+# nivuus_vpn is code this package lays down too: same rule as personas_home.
+with tempfile.TemporaryDirectory() as root:
+    dest = pathlib.Path(root) / DEST_REL
+    vpn = dest / "config" / "custom_components" / "nivuus_vpn"
+    (vpn / "__pycache__").mkdir(parents=True)
+    (vpn / "removed_module.py").write_text("# previous version\n")
+    (dest / "mosquitto").mkdir(parents=True)
+    (dest / "zigbee2mqtt").mkdir(parents=True)
+    (dest / "zigbee2mqtt" / "configuration.yaml").write_text("advanced:\n")
+
+    proc = run(root)
+    check("an update over nivuus_vpn succeeds", proc.returncode, 0)
+    check("a module removed from nivuus_vpn does not survive",
+          (vpn / "removed_module.py").exists(), False)
+    check("a stale nivuus_vpn __pycache__ does not survive",
+          (vpn / "__pycache__").exists(), False)
+    check("nivuus_vpn is laid down again",
+          (vpn / "config_flow.py").is_file(), True)
+
 # --- un repertoire possede qu'on ne peut pas retirer fait echouer la phase --
 # Un lien symbolique (un depot de developpement monte a la main, par exemple)
 # ne se retire pas avec rmtree. Avaler cette erreur laissait copytree ecrire A

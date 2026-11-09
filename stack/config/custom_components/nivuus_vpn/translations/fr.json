@@ -1,0 +1,59 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "VPN invités Nivuus",
+        "description": "Connexion à l'agent système Nivuus, qui fait tourner le VPN du réseau invités. Le formulaire d'envoi se trouve ensuite sous le bouton Configurer de cette intégration.",
+        "data": {
+          "host": "Hôte de l'agent",
+          "port": "Port de l'agent",
+          "token": "Jeton de l'agent"
+        },
+        "data_description": {
+          "host": "L'agent n'écoute que sur cette machine : garder 127.0.0.1.",
+          "port": "Le port WebSocket de l'agent.",
+          "token": "NIVUUS_WS_TOKEN, dans /etc/mqtt-system-agent.env sur le serveur."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "L'agent est injoignable à cette adresse.",
+      "invalid_auth": "L'agent refuse ce jeton.",
+      "timeout": "L'agent n'a pas répondu à temps.",
+      "agent_error": "L'agent a refusé la demande : {reason}"
+    },
+    "abort": {
+      "already_configured": "L'agent est déjà configuré.",
+      "single_instance_allowed": "L'agent est déjà configuré."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Profil du VPN invités",
+        "description": "Envoyer le profil fourni par le fournisseur VPN. Il remplace le profil actuel ; l'identifiant et le mot de passe sont transmis à l'agent et ne sont pas conservés par Home Assistant.",
+        "data": {
+          "ovpn_file": "Profil OpenVPN (.ovpn)",
+          "ca_file": "Certificat d'autorité (facultatif)",
+          "username": "Identifiant VPN",
+          "password": "Mot de passe VPN"
+        },
+        "data_description": {
+          "ovpn_file": "Le fichier .ovpn fourni pour le serveur choisi.",
+          "ca_file": "Seulement pour les fournisseurs qui livrent le certificat à part, en .crt ou .pem.",
+          "username": "L'identifiant du compte VPN, pas celui de Home Assistant.",
+          "password": "Le mot de passe du compte VPN."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "L'agent est injoignable. Vérifier l'adresse de l'intégration.",
+      "invalid_auth": "L'agent refuse le jeton enregistré. Supprimer puis ajouter à nouveau l'intégration avec le jeton actuel.",
+      "timeout": "L'agent n'a pas répondu à temps. L'import est peut-être encore en cours : vérifier l'état du VPN invités.",
+      "agent_error": "L'agent a refusé le profil : {reason}",
+      "activation_failed": "Le profil est enregistré, mais le tunnel ne s'est pas établi : {reason}",
+      "not_utf8": "Ce fichier n'est pas du texte UTF-8.",
+      "upload_missing": "Ce fichier envoyé n'est plus disponible. Le choisir à nouveau."
+    }
+  }
+}
