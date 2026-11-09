@@ -47,9 +47,15 @@
   (`&uart-flow-control`) bloque la transmission vers l'EFR32 du SLZB, dont le
   contrôle de flux matériel est désactivé : la réception fonctionne, les
   commandes ne parviennent jamais.
-- **`per_listener_settings true`** dans `mosquitto.conf` : sans cette
-  directive, l'`allow_anonymous` du listener 8883 (requis par les ampoules
-  Meross) deviendrait global et ouvrirait aussi 1883 et 1884.
+- **MQTT: one account per client, Dynamic Security** (since 2026-11-09).
+  1883/1884/8884 use `plugin_use dynsec`; 8883 (Meross, anonymous) uses the
+  acl-file plugin and `listener_allow_anonymous true`, nothing else does.
+  `per_listener_settings` is gone (deprecated in 2.1): do not bring it back.
+  `dynamic-security.json` belongs to the broker once created, and
+  `mosquitto.conf` is only rewritten when it matches `LEGACY_CONFS`. Rules,
+  files and tests: [`docs/claude/mqtt-accounts.md`](docs/claude/mqtt-accounts.md);
+  design and operator steps:
+  `docs/superpowers/specs/2026-11-09-mqtt-per-client-accounts-design.md`.
 - **Le watchdog OTBR reste dehors**, désactivé en production le 2026-05-04 :
   213 redémarrages de passerelle par semaine pour zéro récupération.
 

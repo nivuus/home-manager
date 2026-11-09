@@ -8,7 +8,7 @@ dépend, en un seul paquet installable.
 | Service | Rôle |
 |---|---|
 | `homeassistant` | le hub, sur le port 8123 |
-| `mosquitto` | broker MQTT (1883, 1884, 8883 TLS, 8884) |
+| `mosquitto` | broker MQTT : 1883, 1884, 8884 (un compte par client, Dynamic Security) ; 8883 TLS (ampoules Meross) |
 | `zigbee2mqtt` | réseau Zigbee |
 | `otbr` | bordure Thread (OpenThread Border Router) |
 | `matterjs-server` | contrôleur Matter |
@@ -59,6 +59,13 @@ make test NIVUUS_INSTALLER_DIR=$HOME/Projects/Nivuus/packages/installer
 
 Sans `NIVUUS_INSTALLER_DIR`, le manifeste est vérifié localement au lieu de
 l'être par le parseur du moteur.
+
+La migration des comptes MQTT est en outre prouvée contre le vrai broker,
+dans des conteneurs jetables sans réseau (docker et root requis) :
+
+```bash
+DYNSEC_TEST_DIR=/root/work make test-broker
+```
 
 Aucun test ne touche à une production : le hook d'installation est exercé sur
 des répertoires temporaires, et le hook d'activation par ses fonctions pures.
