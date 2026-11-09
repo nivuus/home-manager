@@ -232,25 +232,89 @@ with tempfile.TemporaryDirectory() as root:
           "edited by hand" in proc.stderr, True)
     check("no admin secret is drawn", env_admin(root), None)
 
-# --- the broker already owns its accounts file ----------------------------
+# --- an accounts file that lacks a password-file account ------------------
+# Switching the configuration to Dynamic Security with this file would lock
+# out every client still logging in as the missing account.
+for label, users in (("a password-file account", ["fully-salon",
+                                                   ma.ADMIN_USERNAME]),
+                     ("the admin client", ["fully-salon", "mqtt"])):
+    with tempfile.TemporaryDirectory() as root:
+        owned = json.dumps({"clients": [{"username": u} for u in users],
+                            "roles": []}) + "\n"
+        data = install(root, conf=LEGACY, passwd=f"mqtt:{HASH}\n",
+                       dynsec=owned)
+        proc = run(root)
+        check(f"an accounts file missing {label} stops the phase",
+              proc.returncode, 1)
+        check(f"missing {label}: the message names what is missing",
+              ("mqtt" if "mqtt" not in users else ma.ADMIN_USERNAME)
+              in proc.stderr, True)
+        check(f"missing {label}: the configuration is not migrated",
+              (data / "mosquitto.conf").read_text(), LEGACY)
+        check(f"missing {label}: the accounts file is not rewritten",
+              (data / "dynamic-security.json").read_text(), owned)
+        check(f"missing {label}: nothing is laid down",
+              (pathlib.Path(root) / DEST_REL / "docker-compose.yml")
+              .exists(), False)
+
 with tempfile.TemporaryDirectory() as root:
-    owned = '{"clients": [{"username": "fully-salon"}], "roles": []}\n'
+    data = install(root, conf=LEGACY, passwd=f"mqtt:{HASH}\n",
+                   dynsec="not json\n")
+    check("an unreadable accounts file stops the phase",
+          run(root).returncode, 1)
+    check("unreadable accounts file: the configuration is not migrated",
+          (data / "mosquitto.conf").read_text(), LEGACY)
+
+# --- an accounts file that carries every account --------------------------
+with tempfile.TemporaryDirectory() as root:
+    owned = json.dumps({"clients": [{"username": ma.ADMIN_USERNAME},
+                                    {"username": "mqtt"},
+                                    {"username": "fully-salon"}],
+                        "roles": []}) + "\n"
     data = install(root, conf=LEGACY, passwd=f"mqtt:{HASH}\n", dynsec=owned)
     proc = run(root)
-    check("an existing accounts file does not fail the phase",
+    check("a complete accounts file lets the migration through",
           proc.returncode, 0)
     check("an existing accounts file is never rewritten",
           (data / "dynamic-security.json").read_text(), owned)
-    check("the configuration is still migrated",
+    check("the configuration is migrated",
           (data / "mosquitto.conf").read_text(), TEMPLATE)
     check("no admin secret is invented for a file the hook did not write",
           env_admin(root), None)
+
+# --- once migrated, accounts deleted on purpose are not required ----------
+# The last step of the operator procedure deletes `mqtt` from the accounts
+# file while mosquitto/passwd still has it: that must not block updates.
+with tempfile.TemporaryDirectory() as root:
+    owned = json.dumps({"clients": [{"username": ma.ADMIN_USERNAME}],
+                        "roles": []}) + "\n"
+    data = install(root, conf=TEMPLATE, passwd=f"mqtt:{HASH}\n",
+                   dynsec=owned)
+    check("a current configuration does not re-check deleted accounts",
+          run(root).returncode, 0)
+
+# --- the image the configuration needs ------------------------------------
+# plugin_load, plugin_use and listener_allow_anonymous exist from 2.1 on; a
+# floating tag could bring a broker that refuses this configuration.
+import yaml  # noqa: E402
+compose = yaml.safe_load((REPO / "stack" / "docker-compose.yml").read_text())
+image = compose["services"]["mosquitto"]["image"]
+check("the broker image is pinned by digest", "@sha256:" in image, True)
+tag = image.split("@")[0].rpartition(":")[2]
+parts = tag.split("-")[0].split(".")
+version = tuple(int(p) for p in parts) if all(
+    p.isdigit() for p in parts) else (0,)
+check("the pinned broker is at least 2.1", version >= (2, 1), True)
+check("the container proof runs the pinned image",
+      "docker-compose.yml" in (REPO / "tests" /
+                               "broker_dynsec_container.py").read_text(),
+      True)
 
 # --- an admin secret already in .env is reused ----------------------------
 with tempfile.TemporaryDirectory() as root:
     data = install(root, conf=TEMPLATE,
                    env=f"{ma.ADMIN_ENV_KEY}=kept-secret\n")
-    run(root)
+    check("a recreated accounts file succeeds", run(root).returncode, 0)
     check("the .env secret is reused for a recreated accounts file",
           verify(clients(data)[ma.ADMIN_USERNAME]["encoded_password"],
                  "kept-secret"), True)
