@@ -33,7 +33,12 @@ REPO = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "hooks"))
 import mqtt_accounts  # noqa: E402
 
-IMAGE = os.environ.get("MOSQUITTO_IMAGE", "eclipse-mosquitto:latest")
+import yaml  # noqa: E402
+
+# The image the package runs, read from stack/docker-compose.yml: the proof is
+# only worth something against the broker that will load these files.
+IMAGE = yaml.safe_load((REPO / "stack" / "docker-compose.yml").read_text())[
+    "services"]["mosquitto"]["image"]
 NAME = f"dynsec-test-{os.getpid()}"
 DEST_REL = "opt/nivuus/home-manager"
 CERT = "/mosquitto/data/certs/server.crt"

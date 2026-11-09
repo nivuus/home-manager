@@ -84,7 +84,12 @@ services:
 
   mosquitto:
     container_name: mosquitto
-    image: eclipse-mosquitto:latest
+    # Pinned, tag AND digest: mosquitto/mosquitto.conf needs >= 2.1
+    # (plugin_load, plugin_use, listener_allow_anonymous), and the accounts
+    # migration was proven against this exact image
+    # (tests/broker_dynsec_container.py reads it from here). Bump both
+    # together, then re-run `make test-broker`.
+    image: eclipse-mosquitto:2.1.2-alpine@sha256:75d6662dee52c947dc9dd9c29f1d8d7ffef78ddaf38001caa09755681e8bbc98
     restart: always
     volumes:
       - ./mosquitto:/mosquitto/data
