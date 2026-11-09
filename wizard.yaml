@@ -64,8 +64,11 @@
   default: "Europe/Paris"
 
 # Sans defaut, deliberement : un mot de passe par defaut partage par toutes
-# les installations est pire que pas de mot de passe. Vide, hooks/install.py
-# n'ecrit aucun compte et le broker garde ceux qu'il a deja.
+# les installations est pire que pas de mot de passe.
+# Read only when hooks/mqtt_accounts.py creates the broker's accounts file
+# (fresh install): it becomes the shared account "mqtt" the bootstrap
+# configurations log in with. Never applied to an existing account; empty
+# means no such account is created.
 - key: mqtt_password
   type: secret
-  label: "Mot de passe du compte MQTT « mqtt » (vide = ne pas modifier)"
+  label: "Password of the shared MQTT account \"mqtt\", created on a fresh install only (empty = no such account)"

@@ -33,6 +33,13 @@ FOUR RULES CARRY THE REST.
    See OWNED_TREES -- the list names only what this package laid down, never
    the neighbouring integrations.
 
+   mosquitto/mosquitto.conf has one more, narrow exception: it is rewritten
+   when, and only when, its directives are those of a configuration this
+   package once laid down -- the move to per-client MQTT accounts, see
+   hooks/mqtt_accounts.py. The accounts file that move needs,
+   mosquitto/dynamic-security.json, is created when absent and never touched
+   again: the broker owns it.
+
 4. THE DEVELOPMENT FILE DOES NOT SHIP. docker-compose.dev.yml mounts
    repositories that exist only on its author's machine; elsewhere docker
    would create empty directories that Home Assistant would load as broken
@@ -46,6 +53,9 @@ import json
 import os
 import shutil
 import sys
+
+import mqtt_accounts
+import safe_files
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STACK = os.path.join(HERE, "stack")
@@ -114,6 +124,17 @@ def parse_env(text):
     return keys
 
 
+def env_values(text):
+    """The key=value pairs of a .env."""
+    values = {}
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            key, _, value = stripped.partition("=")
+            values[key.strip()] = value.strip()
+    return values
+
+
 def merge_env(existing, rendered):
     """The existing .env, extended with only the keys it does not have yet.
 
@@ -175,11 +196,18 @@ def copy_stack(dest):
     templates on the first pass only.
     """
     existing = {rel for rel in PRESERVED
-                if os.path.isfile(os.path.join(dest, rel))}
-    saved = {}
-    for rel in existing:
-        with open(os.path.join(dest, rel), "rb") as fh:
-            saved[rel] = fh.read()
+                if os.path.lexists(os.path.join(dest, rel))}
+    keep = {os.path.normpath(os.path.join(dest, rel)) for rel in existing}
+
+    def copy_unless_preserved(src, dst):
+        # The copy SKIPS what already exists among PRESERVED, rather than
+        # overwriting it and writing it back afterwards: between the two, a
+        # crash or a container restart would find the packaged file in place
+        # of the installation's -- for mosquitto.conf, a Dynamic Security
+        # configuration with no accounts file, i.e. every client locked out.
+        if os.path.normpath(dst) in keep:
+            return dst
+        return shutil.copy2(src, dst)
 
     # What this package owns is removed BEFORE the copy, which lays it down
     # whole again. copytree has no "replace": without this pass it merges,
@@ -193,15 +221,8 @@ def copy_stack(dest):
         if os.path.lexists(path):
             shutil.rmtree(path)
 
-    shutil.copytree(STACK, dest, symlinks=True, dirs_exist_ok=True)
-
-    # Restore what the copy just overwrote. Save then restore, rather than
-    # filtering the copy: copytree has no "do not overwrite", and an ignore=
-    # on the names would also skip the file on a fresh install, where it must
-    # be laid down.
-    for rel, content in saved.items():
-        with open(os.path.join(dest, rel), "wb") as fh:
-            fh.write(content)
+    shutil.copytree(STACK, dest, symlinks=True, dirs_exist_ok=True,
+                    copy_function=copy_unless_preserved)
 
     for name in (TEMPLATE_NAME, DEV_OVERLAY):
         path = os.path.join(dest, name)
@@ -262,9 +283,55 @@ def main():
     values["COMPOSE_FILE"] = compose_files
 
     dest = os.path.join(root, DEST_REL)
+    env_path = os.path.join(dest, ".env")
+    env_existed = os.path.isfile(env_path)
+    existing_env = {}
+    if env_existed:
+        with open(env_path) as fh:
+            existing_env = env_values(fh.read())
 
-    emit({"event": "progress", "pct": 25, "msg": "Depose de la pile"})
-    created = copy_stack(dest)
+    # Rule 2 again: the MQTT accounts are read and checked before the first
+    # write, so a password file that cannot be carried over, an accounts
+    # file that lacks one of its accounts or a planted symbolic link stops
+    # the phase with the old configuration still in place.
+    with open(os.path.join(STACK, mqtt_accounts.CONF_REL)) as fh:
+        broker_template = fh.read()
+    try:
+        broker_plan = mqtt_accounts.plan(
+            dest, broker_template, existing_env,
+            text_answer(answers, "mqtt_password"))
+    except ValueError as exc:
+        print(f"home-manager install: {exc}", file=sys.stderr)
+        return 1
+
+    # The order below is the guarantee, each step durable before the next:
+    # the admin secret is in .env before the accounts file that needs it,
+    # and the accounts file is complete before any Dynamic Security
+    # configuration is on disk -- laid by the copy on a fresh install, or
+    # rewritten by migrate_conf() on an existing one. A failure at any step
+    # leaves a broker that still starts with every account it had.
+    emit({"event": "progress", "pct": 20, "msg": "MQTT accounts"})
+    try:
+        if broker_plan["admin_is_new"]:
+            os.makedirs(dest, exist_ok=True)
+            safe_files.write_atomic(env_path, merge_env(
+                safe_files.read_text(env_path) or "",
+                "{}={}\n".format(mqtt_accounts.ADMIN_ENV_KEY,
+                                 broker_plan["admin_password"])), 0o600)
+        report = mqtt_accounts.write_accounts(dest, broker_plan)
+
+        emit({"event": "progress", "pct": 25, "msg": "Depose de la pile"})
+        created = copy_stack(dest)
+
+        report += mqtt_accounts.migrate_conf(dest, broker_template,
+                                             broker_plan)
+    except (OSError, ValueError) as exc:
+        print(f"home-manager install: MQTT accounts: {exc}", file=sys.stderr)
+        return 1
+    for line in report:
+        emit({"event": "progress", "pct": 55, "msg": line})
+        if line.startswith("WARNING"):
+            print(f"home-manager install: {line}", file=sys.stderr)
 
     # Deployed templates are rendered on the first pass only: a file already
     # present carries the real configuration, and injecting the wizard's
@@ -275,11 +342,13 @@ def main():
 
     emit({"event": "progress", "pct": 65, "msg": "Rendu de la configuration"})
     rendered = render_env(values)
-    env_path = os.path.join(dest, ".env")
-    if os.path.isfile(env_path):
-        with open(env_path) as fh:
-            existing = fh.read()
-        rendered = merge_env(existing, rendered)
+    on_disk = safe_files.read_text(env_path)
+    if not env_existed and on_disk is not None:
+        # This run created .env with the admin secret alone: the template
+        # comes first, the secret is kept after it.
+        rendered = merge_env(rendered, on_disk)
+    elif env_existed:
+        rendered = merge_env(on_disk, rendered)
         # DEV_OVERLAY has just been removed from the deployment directory
         # (rule 4), even on this reinstall. If the COMPOSE_FILE this .env
         # already carried still named it, leaving it as is would break every
@@ -287,10 +356,9 @@ def main():
         rendered = scrub_dev_overlay(rendered)
         emit({"event": "progress", "pct": 75,
               "msg": ".env existant conserve, variables manquantes ajoutees"})
-    with open(env_path, "w") as fh:
-        fh.write(rendered)
-    # 0600: the .env carries the broker password.
-    os.chmod(env_path, 0o600)
+    # 0600 from its creation, replaced atomically: the .env carries the
+    # broker's admin secret.
+    safe_files.write_atomic(env_path, rendered, 0o600)
 
     emit({"event": "progress", "pct": 90,
           "msg": f"Domotique deposee dans /{DEST_REL}"})
