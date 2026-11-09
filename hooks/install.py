@@ -33,6 +33,13 @@ FOUR RULES CARRY THE REST.
    See OWNED_TREES -- the list names only what this package laid down, never
    the neighbouring integrations.
 
+   mosquitto/mosquitto.conf has one more, narrow exception: it is rewritten
+   when, and only when, its directives are those of a configuration this
+   package once laid down -- the move to per-client MQTT accounts, see
+   hooks/mqtt_accounts.py. The accounts file that move needs,
+   mosquitto/dynamic-security.json, is created when absent and never touched
+   again: the broker owns it.
+
 4. THE DEVELOPMENT FILE DOES NOT SHIP. docker-compose.dev.yml mounts
    repositories that exist only on its author's machine; elsewhere docker
    would create empty directories that Home Assistant would load as broken
@@ -46,6 +53,8 @@ import json
 import os
 import shutil
 import sys
+
+import mqtt_accounts
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STACK = os.path.join(HERE, "stack")
@@ -112,6 +121,17 @@ def parse_env(text):
         if stripped and not stripped.startswith("#") and "=" in stripped:
             keys.append(stripped.partition("=")[0].strip())
     return keys
+
+
+def env_values(text):
+    """The key=value pairs of a .env."""
+    values = {}
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            key, _, value = stripped.partition("=")
+            values[key.strip()] = value.strip()
+    return values
 
 
 def merge_env(existing, rendered):
@@ -262,9 +282,33 @@ def main():
     values["COMPOSE_FILE"] = compose_files
 
     dest = os.path.join(root, DEST_REL)
+    env_path = os.path.join(dest, ".env")
+    existing_env = {}
+    if os.path.isfile(env_path):
+        with open(env_path) as fh:
+            existing_env = env_values(fh.read())
+
+    # Rule 2 again: the MQTT accounts are read and checked before the first
+    # write, so a password file that cannot be carried over stops the phase
+    # with the old configuration still in place.
+    with open(os.path.join(STACK, mqtt_accounts.CONF_REL)) as fh:
+        broker_template = fh.read()
+    try:
+        broker_plan = mqtt_accounts.plan(
+            dest, broker_template, existing_env,
+            text_answer(answers, "mqtt_password"))
+    except ValueError as exc:
+        print(f"home-manager install: {exc}", file=sys.stderr)
+        return 1
 
     emit({"event": "progress", "pct": 25, "msg": "Depose de la pile"})
     created = copy_stack(dest)
+
+    emit({"event": "progress", "pct": 50, "msg": "Comptes MQTT"})
+    for line in mqtt_accounts.apply(dest, broker_template, broker_plan):
+        emit({"event": "progress", "pct": 55, "msg": line})
+        if line.startswith("WARNING"):
+            print(f"home-manager install: {line}", file=sys.stderr)
 
     # Deployed templates are rendered on the first pass only: a file already
     # present carries the real configuration, and injecting the wizard's
@@ -275,7 +319,14 @@ def main():
 
     emit({"event": "progress", "pct": 65, "msg": "Rendu de la configuration"})
     rendered = render_env(values)
-    env_path = os.path.join(dest, ".env")
+    if broker_plan["admin_password"]:
+        # The secret of the broker's account administration client. It is
+        # not a wizard answer: nobody types it, the hook draws it -- or
+        # reuses the one this .env already has, which merge_env keeps.
+        rendered += "\n# Client {} of the MQTT broker (mosquitto_ctrl).\n" \
+                    "{}={}\n".format(mqtt_accounts.ADMIN_USERNAME,
+                                     mqtt_accounts.ADMIN_ENV_KEY,
+                                     broker_plan["admin_password"])
     if os.path.isfile(env_path):
         with open(env_path) as fh:
             existing = fh.read()

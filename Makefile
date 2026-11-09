@@ -10,7 +10,7 @@
 PACKAGE_DIR := $(CURDIR)
 PYTHON ?= python3
 
-.PHONY: test help
+.PHONY: test test-broker help
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*' $(MAKEFILE_LIST) | sed 's/:.*//' | sort
@@ -18,7 +18,14 @@ help:
 test:
 	@for t in test_manifest_contract test_compose_portable \
 	          test_install_hook test_activate_hook test_wizard_answers \
-	          test_personas_payloads test_vpn_payloads; do \
+	          test_personas_payloads test_vpn_payloads test_mqtt_accounts; do \
 	    echo "--- $$t"; \
 	    $(PYTHON) $(PACKAGE_DIR)/tests/$$t.py || exit 1; \
 	done
+
+# Real-broker proof of the MQTT accounts migration (docker + root). Throwaway
+# containers with --network none; see tests/broker_dynsec_container.py.
+# DYNSEC_TEST_DIR must be a directory the docker daemon sees (not a sandboxed
+# /tmp).
+test-broker:
+	$(PYTHON) $(PACKAGE_DIR)/tests/broker_dynsec_container.py
