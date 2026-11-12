@@ -40,6 +40,12 @@
   cela forme un *autre* réseau, sur lequel aucun des équipements appariés ne se
   trouve. C'est la raison d'être de `RENDERED` dans `hooks/install.py` — le
   gabarit n'est rendu que sur un fichier que la copie vient de créer.
+- **Le frontend zigbee2mqtt exige un jeton** (`auth_token: '!secret.yaml
+  auth_token'`, port 8100). Sans lui, tout appareil du LAN peut ouvrir
+  l'appairage, supprimer des équipements ou pousser un firmware. Le hook crée
+  `zigbee2mqtt/secret.yaml` (0600, jeton aléatoire) une seule fois et ne
+  l'écrase jamais. Sans bloc `frontend`, zigbee2mqtt 2.x ouvrirait le 8080
+  sans authentification.
 - **Le txpower Thread est réappliqué en boucle** dans le `command` du service
   `otbr`. `otbr-agent` ne le persiste pas : retirer la boucle, c'est revenir
   silencieusement à 0 dBm et perdre les enfants Thread lointains.
