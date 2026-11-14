@@ -27,6 +27,16 @@ TROIS REGLES.
    otbr de demarrer, et ce n'est pas une raison de declarer la domotique en
    echec : Home Assistant tourne, le reste se repare a chaud. Seul un
    demarrage ou RIEN ne tourne l'est.
+
+A FAILED COMPOSE LISTING IS AN ERROR, never an answer. `config --services`
+failing used to read as "nothing declared" and report the phase done with
+nothing started; `ps -a --services` failing used to read as "no container
+exists" and start every service -- the global start rule 1 forbids. Both now
+raise ActivationError with Compose's last error line, and the phase exits
+non-zero (the same shape as media-manager's activate hook).
+
+THE LAST MESSAGE REPORTS WHAT WAS MEASURED: the services `ps --services` lists
+as running. It makes no claim about a port this phase never contacted.
 """
 import argparse
 import json
@@ -63,18 +73,43 @@ def startup_order(services):
            [name for name in services if name != FIRST]
 
 
+class ActivationError(RuntimeError):
+    """A docker compose call failed: the phase cannot trust its view of the stack."""
+
+
+def last_line(text):
+    """The last non-empty line of Compose's output, the one that names the error."""
+    lines = [line for line in (text or "").strip().splitlines() if line.strip()]
+    return lines[-1][:160] if lines else "no detail"
+
+
 def compose(*args):
     """Docker Compose dans le repertoire de deploiement."""
-    return subprocess.run(["docker", "compose", *args], cwd=DEPLOY,
-                          capture_output=True, text=True)
+    try:
+        return subprocess.run(["docker", "compose", *args], cwd=DEPLOY,
+                              capture_output=True, text=True)
+    except OSError as error:
+        raise ActivationError(f"docker compose {' '.join(args)}: {error}") \
+            from error
 
 
 def compose_services(*args):
-    """La liste de services rendue par une sous-commande compose. [] si echec."""
+    """The service names one compose subcommand prints.
+
+    Raises ActivationError on a non-zero exit instead of returning []: an
+    empty list is a real answer ("nothing declared", "no container", "nothing
+    runs") and a failure must never be mistaken for one.
+    """
     proc = compose(*args)
     if proc.returncode != 0:
-        return []
+        raise ActivationError(
+            f"docker compose {' '.join(args)}: {last_line(proc.stderr)}")
     return [name for name in (proc.stdout or "").split() if name]
+
+
+def running_message(running):
+    """The final progress line: the services measured to run, nothing more."""
+    return "Running services: " + (", ".join(running) if running else "none")
 
 
 def main():
@@ -84,6 +119,15 @@ def main():
     args = parser.parse_args()
     json.load(sys.stdin)          # le contexte est lu, rien n'en depend ici
 
+    try:
+        return run_phase()
+    except ActivationError as exc:
+        print(f"home-manager activate: {exc}", file=sys.stderr)
+        return 1
+
+
+def run_phase():
+    """Start the services that have no container, then report what runs."""
     emit({"event": "progress", "pct": 10, "msg": "Demarrage de la domotique"})
     todo = startup_order(services_to_start(
         compose_services("config", "--services"),
@@ -92,23 +136,19 @@ def main():
     if not todo:
         emit({"event": "progress", "pct": 90,
               "msg": "Tous les services ont deja un conteneur, rien a creer"})
-        emit({"event": "done"})
-        return 0
+    else:
+        proc = compose("up", "-d", *todo)
+        if proc.returncode != 0:
+            emit({"event": "progress", "pct": 60,
+                  "msg": "Partial start: " + last_line(proc.stderr)})
 
-    proc = compose("up", "-d", *todo)
-    if proc.returncode != 0:
-        tail = (proc.stderr or "").strip().splitlines()
-        emit({"event": "progress", "pct": 60,
-              "msg": "Demarrage partiel : "
-                     + (tail[-1][:160] if tail else "sans detail")})
-        # Fatal seulement si RIEN ne tourne (regle 3).
-        if not compose_services("ps", "--services"):
-            print("home-manager activate: aucun service n'a demarre",
-                  file=sys.stderr)
-            return 1
-
-    emit({"event": "progress", "pct": 95,
-          "msg": "Home Assistant repond sur le port 8123"})
+    running = compose_services("ps", "--services")
+    # Fatal only when a start left NOTHING running (rule 3). With nothing to
+    # create, an empty list is the operator's choice, not this phase's failure.
+    if todo and not running:
+        print("home-manager activate: no service is running", file=sys.stderr)
+        return 1
+    emit({"event": "progress", "pct": 95, "msg": running_message(running)})
     emit({"event": "done"})
     return 0
 
