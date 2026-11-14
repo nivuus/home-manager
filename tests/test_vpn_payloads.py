@@ -13,7 +13,6 @@ Run: python3 tests/test_vpn_payloads.py
 """
 import json
 import pathlib
-import re
 import sys
 import uuid
 
@@ -27,6 +26,7 @@ sys.path.insert(0, str(INTEGRATION))
 
 import const  # noqa: E402
 import payloads  # noqa: E402
+from translation_parity import check_translations, placeholders  # noqa: E402
 
 failures = []
 
@@ -211,33 +211,8 @@ check("the manifest depends on file_upload",
       "file_upload" in manifest["dependencies"], True)
 check("the integration has a config flow", manifest["config_flow"], True)
 
-strings = json.loads((INTEGRATION / "strings.json").read_text())
-en = json.loads((INTEGRATION / "translations" / "en.json").read_text())
-fr = json.loads((INTEGRATION / "translations" / "fr.json").read_text())
-check("en.json is strings.json", en, strings)
-
-
-def leaves(tree, prefix=()):
-    """Every (path, text) leaf of a translation tree."""
-    if isinstance(tree, dict):
-        for key, value in tree.items():
-            yield from leaves(value, prefix + (key,))
-    else:
-        yield prefix, tree
-
-
-def placeholders(text):
-    return sorted(re.findall(r"\{(\w+)\}", text))
-
-
-en_leaves = dict(leaves(en))
-fr_leaves = dict(leaves(fr))
-check("fr.json has exactly the keys of en.json",
-      sorted(fr_leaves), sorted(en_leaves))
-for path, text in en_leaves.items():
-    if path in fr_leaves:
-        check(f"{'.'.join(path)} keeps its placeholders in French",
-              placeholders(fr_leaves[path]), placeholders(text))
+strings, languages = check_translations(INTEGRATION, check)
+check("nivuus_vpn ships English and French", languages, ["en", "fr"])
 
 # Every error key the flows can set must be translated, or the owner sees a
 # raw key on the form.

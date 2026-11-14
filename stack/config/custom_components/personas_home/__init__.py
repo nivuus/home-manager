@@ -54,6 +54,8 @@ from .const import (
 )
 from .payloads import (
     auth_headers,
+    endpoint_for_log,
+    error_for_log,
     event_payload,
     feedback_payload,
     is_complete_endpoint,
@@ -168,10 +170,16 @@ async def _async_post(
             await resp.read()
             if resp.status >= 400:
                 _LOGGER.warning(
-                    "Personas Studio refused %s: HTTP %s", endpoint, resp.status
+                    "Personas Studio refused %s: HTTP %s",
+                    endpoint_for_log(url, persona),
+                    resp.status,
                 )
     except Exception as err:  # noqa: BLE001
-        _LOGGER.warning("Personas Studio unreachable at %s: %s", endpoint, err)
+        _LOGGER.warning(
+            "Personas Studio unreachable at %s: %s",
+            endpoint_for_log(url, persona),
+            error_for_log(err),
+        )
 
 
 def _resolve_persona(url: str, configured: str, override: str | None) -> str:
@@ -188,7 +196,7 @@ def _resolve_persona(url: str, configured: str, override: str | None) -> str:
             "Personas Studio: persona %r ignored, %s is a complete endpoint "
             "and already names its correspondent",
             override,
-            url,
+            endpoint_for_log(url),
         )
         return configured
     return override or configured

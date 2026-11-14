@@ -138,6 +138,154 @@ check("the conversation payload asks for a reply",
       {"type": "conversation", "text": "quelle heure",
        "conversation_id": "abc-123", "language": "fr"})
 
+# --- what the log may show of an endpoint ---------------------------------
+# On a complete endpoint the secret IS the path: no log line may carry it.
+# A studio base carries no secret and stays readable as is.
+check("a complete endpoint is logged as scheme and host only",
+      payloads.endpoint_for_log(BLEUENN), "https://bleuenn.example.ts.net")
+check("a complete endpoint keeps its port in the log",
+      payloads.endpoint_for_log("http://10.0.0.5:8123/h/s3cr3t"),
+      "http://10.0.0.5:8123")
+check("a studio base is logged verbatim",
+      payloads.endpoint_for_log("http://127.0.0.1:8080"),
+      "http://127.0.0.1:8080")
+check("a studio base is logged with its persona when one is given",
+      payloads.endpoint_for_log("http://127.0.0.1:8080", "Hestia"),
+      "http://127.0.0.1:8080/webhook/Hestia")
+check("a complete endpoint ignores the persona in the log too",
+      payloads.endpoint_for_log(BLEUENN, "home-manager"),
+      "https://bleuenn.example.ts.net")
+check("user info in a complete endpoint is not logged",
+      payloads.endpoint_for_log("https://user:pw@example.net/h/s3cr3t"),
+      "https://example.net")
+SECRET_PATH = "/h/not-a-real-secret-0123456789abcdef"
+check("the secret path never reaches a formatted message",
+      SECRET_PATH in "Personas Studio refused %s: HTTP %s"
+      % (payloads.endpoint_for_log(BLEUENN), 404), False)
+
+
+class FakeResponseError(Exception):
+    """Shaped like aiohttp.ClientResponseError, whose str() embeds the URL."""
+
+    def __init__(self, url):
+        super().__init__(f"404, message='Not Found', url={url!r}")
+        self.status = 404
+        self.message = "Not Found"
+        self.request_info = object()
+
+
+class FakeInvalidUrl(Exception):
+    """Shaped like aiohttp.InvalidURL, whose str() IS the URL."""
+
+    def __init__(self, url):
+        super().__init__(url)
+        self.url = url
+
+
+check("an HTTP error is logged by status, not by its URL-bearing text",
+      payloads.error_for_log(FakeResponseError(BLEUENN)),
+      "FakeResponseError (HTTP 404)")
+check("an error carrying the URL is logged by its class only",
+      payloads.error_for_log(FakeInvalidUrl(BLEUENN)), "FakeInvalidUrl")
+check("any other error keeps its text",
+      payloads.error_for_log(OSError("Connection refused")),
+      "OSError: Connection refused")
+check("an error with no text is still named",
+      payloads.error_for_log(TimeoutError()), "TimeoutError")
+
+# Every logging site of the integration goes through these helpers: no log
+# call may receive a raw endpoint, URL or exception object.
+import ast  # noqa: E402
+
+INTEGRATION = REPO / "stack" / "config" / "custom_components" / "personas_home"
+RAW = {"endpoint", "url", "err", "error", "exc"}
+raw_args = []
+for source in sorted(INTEGRATION.glob("*.py")):
+    for node in ast.walk(ast.parse(source.read_text())):
+        if (isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "_LOGGER"):
+            for arg in node.args[1:]:
+                if isinstance(arg, ast.Name) and arg.id in RAW:
+                    raw_args.append(f"{source.name}:{node.lineno} {arg.id}")
+check("no log call receives a raw endpoint, URL or exception", raw_args, [])
+
+# --- a failed conversation turn -------------------------------------------
+# A failure is an error-typed response whose speech comes from the
+# integration's translations for the turn's language, never a diagnostic.
+# failure_key() takes the transport's exception classes as arguments, so the
+# classification is checked here without aiohttp installed.
+
+
+class FakeClientError(Exception):
+    """Plays aiohttp.ClientError."""
+
+
+class FakeConnectionError(FakeClientError):
+    """Plays aiohttp.ClientConnectionError."""
+
+
+class FakeServerTimeout(FakeConnectionError, TimeoutError):
+    """Plays aiohttp.ServerTimeoutError: a connection error AND a timeout."""
+
+
+class FakeHttpError(FakeClientError):
+    """Plays aiohttp.ClientResponseError."""
+
+
+def key_of(error):
+    return payloads.failure_key(error, response_error=FakeHttpError,
+                                connection_error=FakeConnectionError)
+
+
+check("a timeout has its own message", key_of(TimeoutError()),
+      "persona_timeout")
+check("a socket read timeout is a timeout, not a connection failure",
+      key_of(FakeServerTimeout()), "persona_timeout")
+check("an HTTP error status is a refusal", key_of(FakeHttpError()),
+      "persona_refused")
+check("a connection failure is unreachable", key_of(FakeConnectionError()),
+      "persona_unreachable")
+check("any other transport error is a failure", key_of(FakeClientError()),
+      "persona_failed")
+check("a malformed reply is a failure", key_of(ValueError("not JSON")),
+      "persona_failed")
+check("the failure keys are exactly the four messages",
+      sorted(payloads.FAILURE_KEYS),
+      sorted(["persona_timeout", "persona_refused", "persona_unreachable",
+              "persona_failed"]))
+
+from translation_parity import check_translations  # noqa: E402
+
+strings, languages = check_translations(INTEGRATION, check)
+check("personas_home ships English and French", languages, ["en", "fr"])
+for key in payloads.FAILURE_KEYS:
+    message = strings.get("exceptions", {}).get(key, {}).get("message")
+    check(f"exceptions.{key}.message is translated",
+          isinstance(message, str) and bool(message.strip()), True)
+
+# The entity itself imports Home Assistant and cannot run here: its shape is
+# checked on the source. The response must be error-typed, the speech must not
+# be a literal, and no language may be written in as a default.
+conversation_src = (INTEGRATION / "conversation.py").read_text()
+conversation_tree = ast.parse(conversation_src)
+called = {node.func.attr for node in ast.walk(conversation_tree)
+          if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)}
+check("a failed turn sets an error-typed response",
+      "async_set_error" in called, True)
+literal_speech = [node.lineno for node in ast.walk(conversation_tree)
+                  if isinstance(node, ast.Call)
+                  and isinstance(node.func, ast.Attribute)
+                  and node.func.attr in ("async_set_speech", "async_set_error")
+                  and any(isinstance(arg, (ast.Constant, ast.JoinedStr))
+                          for arg in node.args)]
+check("no speech is a hard-coded literal", literal_speech, [])
+language_literals = sorted({node.value for node in ast.walk(conversation_tree)
+                            if isinstance(node, ast.Constant)
+                            and node.value in ("en", "fr")})
+check("no language is hard-coded in the entity", language_literals, [])
+
 if failures:
     print("\n".join(failures))
     sys.exit(1)

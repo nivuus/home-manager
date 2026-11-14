@@ -124,7 +124,10 @@ services:
       # alors le TX vers la radio — la reception fonctionne, les commandes ne
       # parviennent jamais.
       OTBR_RCP_ADDITIONAL_ARGS: ""
-      OTBR_REST_LISTEN_ADDRESS: "0.0.0.0"
+      # Unauthenticated REST API, bound to the IPv4 loopback: Home Assistant
+      # (same host network) is its only client. otbr-agent takes one address;
+      # a client resolving localhost to ::1 first falls back to 127.0.0.1.
+      OTBR_REST_LISTEN_ADDRESS: "127.0.0.1"
       OTBR_REST_LISTEN_PORT: "8082"
       OTBR_BACKBONE_IF: "${BACKBONE_IF}"
     volumes:
@@ -170,7 +173,12 @@ services:
       STORAGE_PATH: /data
     volumes:
       - ./matter_js:/data
-    command: ["--storage-path", "/data", "--primary-interface", "${BACKBONE_IF}"]
+    # Unauthenticated WebSocket API, bound to both loopbacks: Home Assistant
+    # (same host network) is its only client, whichever family localhost
+    # resolves to. Given on the command line, not as LISTEN_ADDRESS: the image's
+    # health check then probes localhost, which both listeners answer.
+    command: ["--storage-path", "/data", "--primary-interface", "${BACKBONE_IF}",
+              "--listen-address", "127.0.0.1", "--listen-address", "::1"]
 
   # Music Assistant. Il appartient a ce package pour la meme raison que
   # mosquitto : c'est un service dont Home Assistant depend, et le laisser au
