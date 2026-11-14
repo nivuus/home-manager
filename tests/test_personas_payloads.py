@@ -211,6 +211,81 @@ for source in sorted(INTEGRATION.glob("*.py")):
                     raw_args.append(f"{source.name}:{node.lineno} {arg.id}")
 check("no log call receives a raw endpoint, URL or exception", raw_args, [])
 
+# --- a failed conversation turn -------------------------------------------
+# A failure is an error-typed response whose speech comes from the
+# integration's translations for the turn's language, never a diagnostic.
+# failure_key() takes the transport's exception classes as arguments, so the
+# classification is checked here without aiohttp installed.
+
+
+class FakeClientError(Exception):
+    """Plays aiohttp.ClientError."""
+
+
+class FakeConnectionError(FakeClientError):
+    """Plays aiohttp.ClientConnectionError."""
+
+
+class FakeServerTimeout(FakeConnectionError, TimeoutError):
+    """Plays aiohttp.ServerTimeoutError: a connection error AND a timeout."""
+
+
+class FakeHttpError(FakeClientError):
+    """Plays aiohttp.ClientResponseError."""
+
+
+def key_of(error):
+    return payloads.failure_key(error, response_error=FakeHttpError,
+                                connection_error=FakeConnectionError)
+
+
+check("a timeout has its own message", key_of(TimeoutError()),
+      "persona_timeout")
+check("a socket read timeout is a timeout, not a connection failure",
+      key_of(FakeServerTimeout()), "persona_timeout")
+check("an HTTP error status is a refusal", key_of(FakeHttpError()),
+      "persona_refused")
+check("a connection failure is unreachable", key_of(FakeConnectionError()),
+      "persona_unreachable")
+check("any other transport error is a failure", key_of(FakeClientError()),
+      "persona_failed")
+check("a malformed reply is a failure", key_of(ValueError("not JSON")),
+      "persona_failed")
+check("the failure keys are exactly the four messages",
+      sorted(payloads.FAILURE_KEYS),
+      sorted(["persona_timeout", "persona_refused", "persona_unreachable",
+              "persona_failed"]))
+
+from translation_parity import check_translations  # noqa: E402
+
+strings, languages = check_translations(INTEGRATION, check)
+check("personas_home ships English and French", languages, ["en", "fr"])
+for key in payloads.FAILURE_KEYS:
+    message = strings.get("exceptions", {}).get(key, {}).get("message")
+    check(f"exceptions.{key}.message is translated",
+          isinstance(message, str) and bool(message.strip()), True)
+
+# The entity itself imports Home Assistant and cannot run here: its shape is
+# checked on the source. The response must be error-typed, the speech must not
+# be a literal, and no language may be written in as a default.
+conversation_src = (INTEGRATION / "conversation.py").read_text()
+conversation_tree = ast.parse(conversation_src)
+called = {node.func.attr for node in ast.walk(conversation_tree)
+          if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)}
+check("a failed turn sets an error-typed response",
+      "async_set_error" in called, True)
+literal_speech = [node.lineno for node in ast.walk(conversation_tree)
+                  if isinstance(node, ast.Call)
+                  and isinstance(node.func, ast.Attribute)
+                  and node.func.attr in ("async_set_speech", "async_set_error")
+                  and any(isinstance(arg, (ast.Constant, ast.JoinedStr))
+                          for arg in node.args)]
+check("no speech is a hard-coded literal", literal_speech, [])
+language_literals = sorted({node.value for node in ast.walk(conversation_tree)
+                            if isinstance(node, ast.Constant)
+                            and node.value in ("en", "fr")})
+check("no language is hard-coded in the entity", language_literals, [])
+
 if failures:
     print("\n".join(failures))
     sys.exit(1)

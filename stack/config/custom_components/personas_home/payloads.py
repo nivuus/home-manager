@@ -135,3 +135,36 @@ def error_for_log(error: BaseException) -> str:
         return name
     text = str(error)
     return f"{name}: {text}" if text else name
+
+
+# The translation keys (``exceptions.<key>.message``) a failed conversation
+# turn can speak. Each must exist in every translations/<lang>.json.
+FAILURE_KEYS = (
+    "persona_timeout",
+    "persona_refused",
+    "persona_unreachable",
+    "persona_failed",
+)
+
+
+def failure_key(
+    error: BaseException,
+    *,
+    response_error: type[BaseException],
+    connection_error: type[BaseException],
+) -> str:
+    """The translation key a failed conversation turn speaks.
+
+    The transport's exception classes are passed in (aiohttp's
+    ClientResponseError and ClientConnectionError at run time) so that this
+    module keeps importing nothing but the standard library. The order is the
+    behaviour: aiohttp's ServerTimeoutError is both a connection error and a
+    TimeoutError, and a timeout is what the person should hear about.
+    """
+    if isinstance(error, TimeoutError):
+        return "persona_timeout"
+    if isinstance(error, response_error):
+        return "persona_refused"
+    if isinstance(error, connection_error):
+        return "persona_unreachable"
+    return "persona_failed"

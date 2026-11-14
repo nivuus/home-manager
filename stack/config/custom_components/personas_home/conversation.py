@@ -1,6 +1,7 @@
 """Conversation entity for Personas Studio."""
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Literal
 
@@ -9,12 +10,21 @@ import aiohttp
 from homeassistant.components import conversation
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import intent
+from homeassistant.helpers import intent, translation
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import CONF_PERSONA, CONF_TOKEN, CONF_URL, DEFAULT_TIMEOUT, DOMAIN, NAME
-from .payloads import auth_headers, conversation_payload, webhook_endpoint
+from .payloads import (
+    auth_headers,
+    conversation_payload,
+    endpoint_for_log,
+    error_for_log,
+    failure_key,
+    webhook_endpoint,
+)
+
+_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
@@ -74,7 +84,7 @@ class PersonasConversationEntity(conversation.ConversationEntity):
             user_input.text, conversation_id, user_input.language
         )
 
-        response_text = ""
+        intent_response = intent.IntentResponse(language=user_input.language)
         try:
             session = async_get_clientsession(self._hass)
             async with session.post(
@@ -85,19 +95,46 @@ class PersonasConversationEntity(conversation.ConversationEntity):
             ) as resp:
                 resp.raise_for_status()
                 data = await resp.json()
-                response_text = data.get("response", "")
-                conversation_id = data.get("conversation_id", conversation_id)
-        except aiohttp.ClientResponseError as err:
-            response_text = f"Error {err.status}: {err.message}"
-        except aiohttp.ClientError as err:
-            response_text = f"Connection error: {err}"
-        except Exception as err:  # noqa: BLE001
-            response_text = f"Unexpected error: {err}"
-
-        intent_response = intent.IntentResponse(language=user_input.language)
-        intent_response.async_set_speech(response_text)
+            if not isinstance(data, dict):
+                raise ValueError(f"reply is a {type(data).__name__}, not an object")
+            intent_response.async_set_speech(data.get("response", ""))
+            conversation_id = data.get("conversation_id", conversation_id)
+        except (aiohttp.ClientError, TimeoutError, ValueError) as err:
+            # A failure is an ERROR-typed response, so callers (automations, a
+            # voice pipeline) can tell it from an answer. The diagnostic goes
+            # to the log; the person hears a translated sentence instead.
+            _LOGGER.warning(
+                "Personas Studio conversation failed at %s: %s",
+                endpoint_for_log(self._url, self._persona),
+                error_for_log(err),
+            )
+            intent_response.async_set_error(
+                intent.IntentResponseErrorCode.UNKNOWN,
+                await self._failure_speech(user_input, err),
+            )
 
         return conversation.ConversationResult(
             response=intent_response,
             conversation_id=conversation_id,
         )
+
+    async def _failure_speech(
+        self, user_input: conversation.ConversationInput, err: Exception
+    ) -> str:
+        """The failure sentence in the turn's language.
+
+        Home Assistant's own translation loader picks the file: the turn's
+        language, then the instance's when the turn names none, and English
+        for any key a language file lacks. tests/test_personas_payloads.py
+        guarantees every failure key exists in every shipped file.
+        """
+        key = failure_key(
+            err,
+            response_error=aiohttp.ClientResponseError,
+            connection_error=aiohttp.ClientConnectionError,
+        )
+        language = user_input.language or self._hass.config.language
+        translations = await translation.async_get_translations(
+            self._hass, language, "exceptions", [DOMAIN]
+        )
+        return translations[f"component.{DOMAIN}.exceptions.{key}.message"]
