@@ -105,6 +105,27 @@ check("po token: ecoute limitee a la boucle locale",
       main["services"]["bgutil-pot-provider"]["ports"],
       ["127.0.0.1:4416:4416"])
 
+# The Thread border router's REST API and the Matter server's WebSocket API are
+# unauthenticated administration APIs, and both run in the host's network
+# namespace: their listen address IS a host address. Their only client, Home
+# Assistant, shares that namespace and reaches them through `localhost`.
+#
+# otbr-agent takes exactly one REST listen address, so it gets the IPv4
+# loopback; a client that resolves `localhost` to ::1 first falls back to
+# 127.0.0.1 (aiohttp tries every resolved address).
+check("otbr: REST API limited to the IPv4 loopback",
+      otbr_env["OTBR_REST_LISTEN_ADDRESS"], "127.0.0.1")
+# matterjs-server repeats --listen-address: it binds both loopbacks, so a
+# client resolving `localhost` to either family connects at the first try.
+matter_cmd = main["services"]["matterjs-server"]["command"]
+matter_listen = [matter_cmd[i + 1] for i, arg in enumerate(matter_cmd)
+                 if arg == "--listen-address"]
+check("matterjs-server: API limited to both loopbacks",
+      sorted(matter_listen), ["127.0.0.1", "::1"])
+check("matterjs-server: no LISTEN_ADDRESS that the command line would mask",
+      "LISTEN_ADDRESS" in (main["services"]["matterjs-server"]
+                           .get("environment") or {}), False)
+
 # MA sert ses flux aux enceintes depuis le port 8097 : en reseau bridge il leur
 # annoncerait une adresse qu'elles ne savent pas joindre.
 check("music-assistant: reseau de l'hote",
