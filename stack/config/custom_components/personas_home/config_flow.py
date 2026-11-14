@@ -41,7 +41,7 @@ from .const import (
     DOMAIN,
     NAME,
 )
-from .payloads import auth_headers, webhook_endpoint
+from .payloads import auth_headers, endpoint_for_log, webhook_endpoint
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -102,7 +102,7 @@ async def _probe(
     except (aiohttp.ClientConnectorError, TimeoutError):
         _LOGGER.warning(
             "Personas Studio: %s does not answer; saved anyway, the "
-            "correspondent may simply be down", endpoint
+            "correspondent may simply be down", endpoint_for_log(url, persona)
         )
         return None
     except aiohttp.ClientError:

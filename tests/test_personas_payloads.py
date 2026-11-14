@@ -138,6 +138,79 @@ check("the conversation payload asks for a reply",
       {"type": "conversation", "text": "quelle heure",
        "conversation_id": "abc-123", "language": "fr"})
 
+# --- what the log may show of an endpoint ---------------------------------
+# On a complete endpoint the secret IS the path: no log line may carry it.
+# A studio base carries no secret and stays readable as is.
+check("a complete endpoint is logged as scheme and host only",
+      payloads.endpoint_for_log(BLEUENN), "https://bleuenn.example.ts.net")
+check("a complete endpoint keeps its port in the log",
+      payloads.endpoint_for_log("http://10.0.0.5:8123/h/s3cr3t"),
+      "http://10.0.0.5:8123")
+check("a studio base is logged verbatim",
+      payloads.endpoint_for_log("http://127.0.0.1:8080"),
+      "http://127.0.0.1:8080")
+check("a studio base is logged with its persona when one is given",
+      payloads.endpoint_for_log("http://127.0.0.1:8080", "Hestia"),
+      "http://127.0.0.1:8080/webhook/Hestia")
+check("a complete endpoint ignores the persona in the log too",
+      payloads.endpoint_for_log(BLEUENN, "home-manager"),
+      "https://bleuenn.example.ts.net")
+check("user info in a complete endpoint is not logged",
+      payloads.endpoint_for_log("https://user:pw@example.net/h/s3cr3t"),
+      "https://example.net")
+SECRET_PATH = "/h/not-a-real-secret-0123456789abcdef"
+check("the secret path never reaches a formatted message",
+      SECRET_PATH in "Personas Studio refused %s: HTTP %s"
+      % (payloads.endpoint_for_log(BLEUENN), 404), False)
+
+
+class FakeResponseError(Exception):
+    """Shaped like aiohttp.ClientResponseError, whose str() embeds the URL."""
+
+    def __init__(self, url):
+        super().__init__(f"404, message='Not Found', url={url!r}")
+        self.status = 404
+        self.message = "Not Found"
+        self.request_info = object()
+
+
+class FakeInvalidUrl(Exception):
+    """Shaped like aiohttp.InvalidURL, whose str() IS the URL."""
+
+    def __init__(self, url):
+        super().__init__(url)
+        self.url = url
+
+
+check("an HTTP error is logged by status, not by its URL-bearing text",
+      payloads.error_for_log(FakeResponseError(BLEUENN)),
+      "FakeResponseError (HTTP 404)")
+check("an error carrying the URL is logged by its class only",
+      payloads.error_for_log(FakeInvalidUrl(BLEUENN)), "FakeInvalidUrl")
+check("any other error keeps its text",
+      payloads.error_for_log(OSError("Connection refused")),
+      "OSError: Connection refused")
+check("an error with no text is still named",
+      payloads.error_for_log(TimeoutError()), "TimeoutError")
+
+# Every logging site of the integration goes through these helpers: no log
+# call may receive a raw endpoint, URL or exception object.
+import ast  # noqa: E402
+
+INTEGRATION = REPO / "stack" / "config" / "custom_components" / "personas_home"
+RAW = {"endpoint", "url", "err", "error", "exc"}
+raw_args = []
+for source in sorted(INTEGRATION.glob("*.py")):
+    for node in ast.walk(ast.parse(source.read_text())):
+        if (isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "_LOGGER"):
+            for arg in node.args[1:]:
+                if isinstance(arg, ast.Name) and arg.id in RAW:
+                    raw_args.append(f"{source.name}:{node.lineno} {arg.id}")
+check("no log call receives a raw endpoint, URL or exception", raw_args, [])
+
 if failures:
     print("\n".join(failures))
     sys.exit(1)

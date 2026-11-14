@@ -102,3 +102,36 @@ def feedback_payload(
         "entity_id": entity_id,
         "details": {"accepted": accepted, "suggestion_id": suggestion_id},
     }
+
+
+def endpoint_for_log(url: str, persona: str | None = None) -> str:
+    """The endpoint a channel posts to, as a log line may show it.
+
+    ``url`` is the CONFIGURED url, not the computed endpoint: only the
+    configured shape says whether a path is a secret. On a complete endpoint
+    the secret IS the path, so only the scheme and the host (with its port)
+    are kept. A studio base carries no secret: it is shown with the persona
+    appended, as ``webhook_endpoint`` builds it, when a persona is given.
+    """
+    if is_complete_endpoint(url):
+        parts = urlsplit(url.rstrip("/"))
+        return f"{parts.scheme}://{parts.netloc.rpartition('@')[2]}"
+    return webhook_endpoint(url, persona) if persona else url
+
+
+def error_for_log(error: BaseException) -> str:
+    """A transport error as a log line may show it, without the URL it may carry.
+
+    An HTTP error (it has a ``status``) is logged by its status: its text
+    embeds the request URL. An error that carries a ``url`` or a
+    ``request_info`` is logged by its class only, for the same reason. Any
+    other error keeps its text, which names the cause.
+    """
+    name = type(error).__name__
+    status = getattr(error, "status", None)
+    if isinstance(status, int):
+        return f"{name} (HTTP {status})"
+    if hasattr(error, "url") or hasattr(error, "request_info"):
+        return name
+    text = str(error)
+    return f"{name}: {text}" if text else name
