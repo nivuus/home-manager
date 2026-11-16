@@ -60,6 +60,12 @@
   files and tests: [`docs/claude/mqtt-accounts.md`](docs/claude/mqtt-accounts.md);
   design and operator steps:
   `docs/superpowers/specs/2026-11-09-mqtt-per-client-accounts-design.md`.
+- **A `RENDERED` template is never copied.** `hooks/install.py` renders it in
+  memory and puts the finished file in place by a rename, only when absent:
+  copied first and rendered after, an interrupted install left
+  `tcp://@SLZB_HOST@:@ZIGBEE_PORT@` in a file every later run preserved. A
+  file still holding those placeholders stops the phase with the remedy; it
+  is never rewritten.
 - **Le watchdog OTBR reste dehors**, désactivé en production le 2026-05-04 :
   213 redémarrages de passerelle par semaine pour zéro récupération.
 
