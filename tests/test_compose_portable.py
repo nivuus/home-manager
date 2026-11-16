@@ -172,6 +172,29 @@ NOT_INTERPOLATED = {"COMPOSE_FILE", "ZIGBEE_PORT"}
 check("aucune variable du gabarit orpheline",
       sorted(declared - interpolated - NOT_INTERPOLATED), [])
 
+# Every service bounds its own logs: a stack must not depend on a daemon-level
+# default it cannot see. A service without a cap grows /var/lib/docker until
+# the root filesystem is full (the 2026-11-03 incident). The cap is spelled
+# once, as an extension field, so a new service only has to reference it.
+for name, service in main["services"].items():
+    logging = service.get("logging") or {}
+    check(f"{name}: json-file log driver", logging.get("driver"), "json-file")
+    options = logging.get("options") or {}
+    check(f"{name}: log file size capped", bool(options.get("max-size")), True)
+    check(f"{name}: log rotation keeps several files",
+          int(options.get("max-file", 1)) > 1, True)
+
+# The agent only tracks Docker updates of containers that carry the watchtower
+# label. bgutil-pot-provider follows `latest` on purpose (see CLAUDE.md): left
+# unlabelled it is pulled once and drifts from the client Music Assistant
+# reinstalls at every start. The other services without the label are open
+# questions for the owner, not asserted here.
+for name in ("homeassistant", "bgutil-pot-provider"):
+    labels = main["services"][name].get("labels") or {}
+    check(f"{name}: update tracking label",
+          str(labels.get("com.centurylinklabs.watchtower.enable")).lower(),
+          "true")
+
 if failures:
     print("\n".join(failures))
     sys.exit(1)
