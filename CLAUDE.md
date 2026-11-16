@@ -66,6 +66,12 @@
   `tcp://@SLZB_HOST@:@ZIGBEE_PORT@` in a file every later run preserved. A
   file still holding those placeholders stops the phase with the remedy; it
   is never rewritten.
+- **A fresh install has no shared MQTT account.** `hooks/mqtt_clients.py`
+  names the clients that get their own account and role (`homeassistant`,
+  `zigbee2mqtt`, `mqtt-system-agent`) and where each password is handed over
+  (`zigbee2mqtt/mqtt-credentials.yaml`, `/etc/mqtt-system-agent.env`). Do
+  not bring back a wizard password or a `legacy-full-access` client: a shared
+  account can publish the agent's root command topics.
 - **Le watchdog OTBR reste dehors**, désactivé en production le 2026-05-04 :
   213 redémarrages de passerelle par semaine pour zéro récupération.
 

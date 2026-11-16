@@ -19,7 +19,7 @@ test:
 	@for t in test_manifest_contract test_compose_portable \
 	          test_install_hook test_install_rendering test_activate_hook \
 	          test_wizard_answers test_personas_payloads test_vpn_payloads \
-	          test_mqtt_accounts \
+	          test_mqtt_accounts test_mqtt_clients \
 	          test_mqtt_migration_safety; do \
 	    echo "--- $$t"; \
 	    $(PYTHON) $(PACKAGE_DIR)/tests/$$t.py || exit 1; \

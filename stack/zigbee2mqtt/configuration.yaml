@@ -14,7 +14,12 @@ mqtt:
   # Le broker du meme package, sur la boucle locale : les deux conteneurs sont
   # en network_mode: host.
   server: mqtt://localhost:1883
-  user: mqtt
+  # Its own broker client, limited to zigbee2mqtt/# and to Home Assistant
+  # discovery (role zigbee2mqtt in hooks/mqtt_accounts.py). hooks/install.py
+  # writes the password to mqtt-credentials.yaml (0600) next to this file on
+  # a fresh install. Keep the quotes: without them YAML reads a tag.
+  user: zigbee2mqtt
+  password: '!mqtt-credentials.yaml password'
 
 serial:
   # Mode reseau : la radio Zigbee est exposee en ser2net par la passerelle.

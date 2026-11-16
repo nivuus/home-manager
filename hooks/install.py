@@ -12,7 +12,7 @@ FOUR RULES CARRY THE REST.
 1. NOTHING THAT CARRIES DATA IS OVERWRITTEN. config/ holds the automations,
    the database, the secrets and the tokens of a whole house; mosquitto/passwd
    the broker accounts; zigbee2mqtt/configuration.yaml the network_key of the
-   Zigbee network; .env the MQTT password. This phase also runs on an
+   Zigbee network; .env the MQTT secrets. This phase also runs on an
    already installed machine (`install.py --root /`), where a rewrite would
    silently destroy all of that. Keys missing from .env are ADDED, present
    ones are left alone -- EXCEPT ONE, COMPOSE_FILE, and only to remove a
@@ -55,6 +55,7 @@ import shutil
 import sys
 
 import mqtt_accounts
+import mqtt_clients
 import safe_files
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -350,27 +351,26 @@ def main():
     with open(os.path.join(STACK, mqtt_accounts.CONF_REL)) as fh:
         broker_template = fh.read()
     try:
-        broker_plan = mqtt_accounts.plan(
-            dest, broker_template, existing_env,
-            text_answer(answers, "mqtt_password"))
+        broker_plan = mqtt_accounts.plan(dest, broker_template, existing_env)
+        mqtt_clients.require_safe_targets(root, dest)
     except ValueError as exc:
         print(f"home-manager install: {exc}", file=sys.stderr)
         return 1
 
     # The order below is the guarantee, each step durable before the next:
-    # the admin secret is in .env before the accounts file that needs it,
+    # every secret the accounts file is built from is in .env before it,
     # and the accounts file is complete before any Dynamic Security
     # configuration is on disk -- laid by the copy on a fresh install, or
     # rewritten by migrate_conf() on an existing one. A failure at any step
     # leaves a broker that still starts with every account it had.
     emit({"event": "progress", "pct": 20, "msg": "MQTT accounts"})
     try:
-        if broker_plan["admin_is_new"]:
+        if broker_plan["new_secrets"]:
             os.makedirs(dest, exist_ok=True)
             safe_files.write_atomic(env_path, merge_env(
                 safe_files.read_text(env_path) or "",
-                "{}={}\n".format(mqtt_accounts.ADMIN_ENV_KEY,
-                                 broker_plan["admin_password"])), 0o600)
+                "".join(f"{key}={value}\n" for key, value
+                        in broker_plan["new_secrets"].items())), 0o600)
         report = mqtt_accounts.write_accounts(dest, broker_plan)
 
         emit({"event": "progress", "pct": 25, "msg": "Depose de la pile"})
@@ -381,7 +381,14 @@ def main():
 
         # After the copy and the migration, so that nothing can fail between
         # a template and its rendering: there is no template on disk at all.
-        render_templates(dest, values)
+        rendered_now = render_templates(dest, values)
+
+        # Each client the hook created an account for receives its password
+        # where it reads it. Done on every pass from what .env holds, so a
+        # run interrupted after the accounts file still ends up wired.
+        report += mqtt_clients.deliver(
+            root, dest, {**existing_env, **broker_plan["new_secrets"]},
+            rendered_now)
     except (OSError, ValueError) as exc:
         print(f"home-manager install: MQTT accounts: {exc}", file=sys.stderr)
         return 1

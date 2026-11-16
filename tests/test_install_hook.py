@@ -29,7 +29,6 @@ ANSWERS = {
     "thread_txpower": "20",
     "backbone_if": "br0",
     "timezone": "Europe/Paris",
-    "mqtt_password": "",
 }
 
 failures = []

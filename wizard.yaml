@@ -63,12 +63,6 @@
   label: "Fuseau horaire"
   default: "Europe/Paris"
 
-# Sans defaut, deliberement : un mot de passe par defaut partage par toutes
-# les installations est pire que pas de mot de passe.
-# Read only when hooks/mqtt_accounts.py creates the broker's accounts file
-# (fresh install): it becomes the shared account "mqtt" the bootstrap
-# configurations log in with. Never applied to an existing account; empty
-# means no such account is created.
-- key: mqtt_password
-  type: secret
-  label: "Password of the shared MQTT account \"mqtt\", created on a fresh install only (empty = no such account)"
+# No broker password is asked: a fresh install has no shared MQTT account.
+# hooks/mqtt_accounts.py draws one password per client and hands each to its
+# client (hooks/mqtt_clients.py).
