@@ -25,6 +25,11 @@ of install.py). The migration therefore follows three rules:
    accounts keep the full access they had, through the legacy-full-access
    role, until the operator replaces them with per-device clients.
 
+A FRESH INSTALL HAS NO SHARED ACCOUNT. With nothing to carry over, the hook
+creates one client per client it knows by name (hooks/mqtt_clients.py), each
+limited to its role, and neither the legacy-full-access role nor any account
+holding it exists.
+
 The JSON is written BEFORE the configuration that loads it: a broker started
 on the new configuration without its accounts would lock every client out.
 """
@@ -34,6 +39,7 @@ import json
 import os
 import secrets
 
+import mqtt_clients
 import safe_files
 
 CONF_REL = "mosquitto/mosquitto.conf"
@@ -47,10 +53,12 @@ MOSQUITTO_UID = 1883
 
 ADMIN_USERNAME = "nivuus-admin"
 ADMIN_ENV_KEY = "MQTT_ADMIN_PASSWORD"
-LEGACY_USERNAME = "mqtt"
 # Mosquitto's own default is 1000 (PW_DEFAULT_ITERATIONS). The admin logs in
 # a few times a year, so the hook can afford a far stronger hash.
 ADMIN_ITERATIONS = 210000
+# Mosquitto's default. A client logs in at every reconnection, and its
+# password is a 256-bit random token: stretching it would protect nothing.
+CLIENT_ITERATIONS = 1000
 
 # Hash prefixes mosquitto_pw_decode() understands: sha512, sha512-pbkdf2,
 # argon2id.
@@ -193,16 +201,25 @@ ROLES = (
      [_acl("publishClientSend", "fully/#")]),
     ("operator", "Interactive debugging (mosquitto_sub/pub): everything.",
      _readwrite("#") + _read("$SYS/#")),
-    ("legacy-full-access", "Accounts carried over from the password file, "
-     "with the unrestricted access they had. Remove once replaced.",
-     _readwrite("#")),
     ("dynsec-admin", "Administers clients, groups and roles.",
      _readwrite("$CONTROL/dynamic-security/#")),
 )
 
+# Only defined in an accounts file that carries password-file accounts over:
+# on a fresh install nothing holds it, and it must not be there to hand out.
+LEGACY_ROLE = (
+    "legacy-full-access", "Accounts carried over from the password file, "
+    "with the unrestricted access they had. Remove once replaced.",
+    _readwrite("#"))
 
-def build_dynsec(admin_encoded, accounts):
-    """The initial dynamic-security.json, as a dict."""
+
+def build_dynsec(admin_encoded, accounts, provisioned=()):
+    """The initial dynamic-security.json, as a dict.
+
+    `accounts` are (username, encoded hash) pairs carried over from the
+    password file; `provisioned` are (mqtt_clients.Client, encoded hash)
+    pairs, each created with its own role.
+    """
     clients = [{
         "username": ADMIN_USERNAME,
         "textname": "Account administration (mosquitto_ctrl)",
@@ -214,8 +231,16 @@ def build_dynsec(admin_encoded, accounts):
             "username": username,
             "textname": "Carried over from the password file",
             "encoded_password": encoded,
-            "roles": [{"rolename": "legacy-full-access"}],
+            "roles": [{"rolename": LEGACY_ROLE[0]}],
         })
+    for client, encoded in provisioned:
+        clients.append({
+            "username": client.username,
+            "textname": client.textname,
+            "encoded_password": encoded,
+            "roles": [{"rolename": client.role}],
+        })
+    roles = ROLES + ((LEGACY_ROLE,) if accounts else ())
     return {
         "defaultACLAccess": {
             "publishClientSend": False,
@@ -226,7 +251,7 @@ def build_dynsec(admin_encoded, accounts):
         "clients": clients,
         "groups": [],
         "roles": [{"rolename": name, "textdescription": text, "acls": acls}
-                  for name, text, acls in ROLES],
+                  for name, text, acls in roles],
     }
 
 
@@ -242,7 +267,7 @@ def _existing_usernames(path):
                          f"Dynamic Security file ({exc})") from exc
 
 
-def plan(dest, template, existing_env, wizard_password):
+def plan(dest, template, existing_env):
     """Decide what the migration will do, before the install writes anything.
 
     `existing_env` maps the keys of the .env already in place. Raises
@@ -253,7 +278,8 @@ def plan(dest, template, existing_env, wizard_password):
     conf_text = safe_files.read_text(os.path.join(dest, CONF_REL))
     state = "absent" if conf_text is None else conf_state(conf_text, template)
     result = {"state": state, "rewrite_conf": state == "legacy",
-              "dynsec": None, "admin_password": None, "admin_is_new": False}
+              "dynsec": None, "new_secrets": {}, "carried": [],
+              "provisioned": []}
     if state == "unknown":
         return result
     if state == "legacy":
@@ -293,17 +319,26 @@ def plan(dest, template, existing_env, wizard_password):
     if ADMIN_USERNAME in names:
         raise ValueError(f"{PASSWD_REL} already has an account named "
                          f"{ADMIN_USERNAME!r}, the name of the admin client")
-    # A fresh install has no password file: the wizard's answer, if any,
-    # becomes the shared account the bootstrap configurations log in with.
-    if wizard_password and LEGACY_USERNAME not in names:
-        accounts.append((LEGACY_USERNAME, encode_pbkdf2(wizard_password)))
 
-    saved = existing_env.get(ADMIN_ENV_KEY)
-    admin_password = saved or secrets.token_urlsafe(32)
-    result["dynsec"] = build_dynsec(encode_pbkdf2(admin_password), accounts)
-    result["admin_password"] = admin_password
-    result["admin_is_new"] = not saved
+    def secret(key):
+        """The secret .env already holds under `key`, or a new one the
+        caller must save there before the accounts file is written."""
+        saved = existing_env.get(key)
+        if not saved:
+            saved = result["new_secrets"][key] = secrets.token_urlsafe(32)
+        return saved
+
+    admin_encoded = encode_pbkdf2(secret(ADMIN_ENV_KEY))
+    # Nothing to carry over: a fresh install. Each known client gets its own
+    # account and role; there is no shared one. With accounts carried over,
+    # their clients are moved one at a time by the operator, who alone knows
+    # which device logs in as what (docs/claude/mqtt-accounts.md).
+    provisioned = [] if accounts else [
+        (client, encode_pbkdf2(secret(client.env_key), CLIENT_ITERATIONS))
+        for client in mqtt_clients.CLIENTS]
+    result["dynsec"] = build_dynsec(admin_encoded, accounts, provisioned)
     result["carried"] = names
+    result["provisioned"] = [client for client, _ in provisioned]
     return result
 
 
@@ -322,7 +357,19 @@ def write_accounts(dest, result):
     owned = safe_files.write_atomic(os.path.join(dest, DYNSEC_REL), text,
                                     0o600, (MOSQUITTO_UID, MOSQUITTO_UID))
     report = [f"{DYNSEC_REL} created: {ADMIN_USERNAME} + "
-              f"{len(result['carried'])} account(s) carried over"]
+              f"{len(result['carried'])} account(s) carried over + "
+              f"{len(result['provisioned'])} client(s) created"]
+    if result["carried"]:
+        report.append(
+            f"WARNING: {', '.join(result['carried'])} carried over with "
+            "unrestricted access (role legacy-full-access): give each device "
+            "its own client, then delete them (docs/claude/mqtt-accounts.md)")
+    if mqtt_clients.HOME_ASSISTANT in result["provisioned"]:
+        report.append(
+            "Home Assistant's broker account: user "
+            f"{mqtt_clients.HOME_ASSISTANT.username}, password "
+            f"{mqtt_clients.HOME_ASSISTANT.env_key} in .env; enter both in "
+            "its MQTT integration (broker localhost, port 1883)")
     if not owned:
         # Not an error swallowed: a process that is not root cannot give a
         # file to another uid. The engine installs as root; an unprivileged

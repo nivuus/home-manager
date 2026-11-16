@@ -48,12 +48,11 @@ check("defaut: txpower Thread", defaults["thread_txpower"], "20")
 check("defaut: interface backbone", defaults["backbone_if"], "localBridge")
 check("defaut: fuseau", defaults["timezone"], "Europe/Paris")
 
-# Le mot de passe du broker est un secret : le portail ne doit pas l'afficher
-# en clair, et il ne doit pas avoir de defaut — un mot de passe par defaut
-# partage par toutes les installations est pire que pas de mot de passe.
-mqtt = next(q for q in QUESTIONS if q["key"] == "mqtt_password")
-check("mot de passe MQTT en secret", mqtt["type"], "secret")
-check("mot de passe MQTT sans defaut", mqtt.get("default"), None)
+# No question asks for a broker password: a fresh install has no shared MQTT
+# account, each client gets a password the install hook draws. A secret
+# question here would be the shared account coming back.
+check("no question asks for a secret",
+      [q["key"] for q in QUESTIONS if q["type"] == "secret"], [])
 
 # La cle est « choices », en anglais, meme si le type s'appelle « choix » :
 # c'est ce que lit packages/wizard.py, et un « choix: » y serait vu comme une

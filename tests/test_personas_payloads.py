@@ -265,6 +265,32 @@ for key in payloads.FAILURE_KEYS:
     check(f"exceptions.{key}.message is translated",
           isinstance(message, str) and bool(message.strip()), True)
 
+# The two actions are described in the translations, not in services.yaml:
+# Home Assistant shows a name or a description written in services.yaml as
+# is, in every language. Each action and each field services.yaml declares
+# must be named in every shipped language (parity is checked above), and
+# services.yaml must carry no text of its own.
+import yaml  # noqa: E402
+
+declared = yaml.safe_load((INTEGRATION / "services.yaml").read_text())
+described = strings.get("services", {})
+check("the translations describe exactly the declared actions",
+      sorted(described), sorted(declared))
+for action, spec in declared.items():
+    fields = spec.get("fields", {})
+    texts = described.get(action, {})
+    check(f"{action}: named and described",
+          all(isinstance(texts.get(k), str) and texts[k].strip()
+              for k in ("name", "description")), True)
+    check(f"{action}: the translations name exactly the declared fields",
+          sorted(texts.get("fields", {})), sorted(fields))
+    check(f"{action}: every field is named",
+          [f for f, t in texts.get("fields", {}).items()
+           if not str(t.get("name", "")).strip()], [])
+    check(f"{action}: services.yaml carries no text of its own",
+          [where for where, node in [(action, spec), *fields.items()]
+           for k in ("name", "description") if k in node], [])
+
 # The entity itself imports Home Assistant and cannot run here: its shape is
 # checked on the source. The response must be error-typed, the speech must not
 # be a literal, and no language may be written in as a default.

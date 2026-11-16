@@ -150,10 +150,26 @@ side (review new MQTT entities), out of scope.
   (`$7$101$…`, Mosquitto 2.0 format, 12-byte salt) on a copy of the live data
   directory: accepted on 1883, 1884 and 8884 after migration. A line that is
   not a hash (plaintext file) stops the phase before any write.
-- On a fresh install (no password file), the wizard's `mqtt_password`, if
-  answered, becomes the `mqtt` client — the account the bootstrap
-  `zigbee2mqtt/configuration.yaml` logs in with. It never changes an existing
-  account.
+- On a fresh install (no password-file account to carry over), **no shared
+  account** (amended 2026-11-16; the wizard used to turn its `mqtt_password`
+  answer into an `mqtt` client with `legacy-full-access`, which the bootstrap
+  `zigbee2mqtt/configuration.yaml` logged in with — the per-client model was
+  true of the reference host only). The hook creates one client per client it
+  knows by name (`hooks/mqtt_clients.py`), each with its own role and a
+  password it draws, saved in `.env` before the accounts file is written:
+
+  | Client | Role | `.env` key | Handed over through |
+  |---|---|---|---|
+  | `homeassistant` | `home-assistant` | `MQTT_HOMEASSISTANT_PASSWORD` | nothing: typed once in HA's MQTT integration |
+  | `zigbee2mqtt` | `zigbee2mqtt` | `MQTT_ZIGBEE2MQTT_PASSWORD` | `zigbee2mqtt/mqtt-credentials.yaml` (0600), referenced as `'!mqtt-credentials.yaml password'` |
+  | `mqtt-system-agent` | `system-agent` | `MQTT_SYSTEM_AGENT_PASSWORD` | `MQTT_USERNAME`/`MQTT_PASSWORD` in `/etc/mqtt-system-agent.env` (0600), read by the agent's unit (`EnvironmentFile=-`, `nivuus/mqtt`) |
+
+  The `legacy-full-access` role is then not defined at all. With accounts
+  carried over, none of these clients is created: which device logs in as
+  what is the operator's knowledge, and the procedure below moves them.
+  The hand-over runs on every pass from what `.env` holds, never overwrites
+  a credentials file, and adds nothing to an environment file that already
+  defines `MQTT_USERNAME` or `MQTT_PASSWORD`.
 
 ## Migration of an existing install (hooks/install.py + hooks/mqtt_accounts.py)
 

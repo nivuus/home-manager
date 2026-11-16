@@ -11,8 +11,7 @@ tier: userspace
 # console avec firewalld tranche : un package declare ses PROPRES dependances
 # plutot que de se coupler a la liste de features du moteur, sinon
 # l'installation autonome sur une Debian ordinaire — que le contrat existe
-# precisement pour permettre — casse. Si l'operateur a coche la feature docker,
-# l'apt ci-dessous est un no-op idempotent.
+# precisement pour permettre — casse.
 #
 # `claims:` aurait ete faux. Les radios Thread et Zigbee sont jointes par le
 # reseau (SLZB-MR2U en ser2net), pas par un peripherique que deux packages se
@@ -24,9 +23,18 @@ tier: userspace
 # gpu-discrete, nvme-dedicated, cpu-hybrid) n'est exige par la domotique. Les
 # demander masquerait le package sur des machines ou il fonctionne.
 
-apt:
-  - docker.io
-  - docker-compose-v2
+# Docker is deliberately NOT declared here, the same position as
+# media-manager. `docker-compose-v2` is an Ubuntu name: Debian trixie has no
+# such package (its own are `docker.io` and `docker-compose`), and the engine
+# installs the apt lists of every selected package in ONE transaction, so one
+# unknown name leaves all of them uninstalled. Declaring `docker.io` instead
+# would be worse on a host that runs Docker CE, the reference host included:
+# the two conflict, and apt would remove Docker CE to satisfy it.
+#
+# Docker Engine with the compose v2 plugin remains a prerequisite, whichever
+# packaging provides it. hooks/activate.py fails on its first
+# `docker compose` call, with Docker's own message, when it is missing.
+apt: []
 
 wizard:
   questions: wizard.yaml

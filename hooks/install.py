@@ -12,7 +12,7 @@ FOUR RULES CARRY THE REST.
 1. NOTHING THAT CARRIES DATA IS OVERWRITTEN. config/ holds the automations,
    the database, the secrets and the tokens of a whole house; mosquitto/passwd
    the broker accounts; zigbee2mqtt/configuration.yaml the network_key of the
-   Zigbee network; .env the MQTT password. This phase also runs on an
+   Zigbee network; .env the MQTT secrets. This phase also runs on an
    already installed machine (`install.py --root /`), where a rewrite would
    silently destroy all of that. Keys missing from .env are ADDED, present
    ones are left alone -- EXCEPT ONE, COMPOSE_FILE, and only to remove a
@@ -55,6 +55,7 @@ import shutil
 import sys
 
 import mqtt_accounts
+import mqtt_clients
 import safe_files
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -79,11 +80,11 @@ PRESERVED = (
     "zigbee2mqtt/configuration.yaml",
 )
 
-# Files rendered from the template after the copy, with the same @KEYS@ as
-# the .env. Those in PRESERVED are rendered only when just created:
-# zigbee2mqtt reads its port from ITS file, not from the environment, so the
-# wizard's answer must be written there on the first pass -- and never on a
-# later one.
+# Files rendered from the template, with the same @KEYS@ as the .env, and
+# created by render_templates() only when absent -- the copy never lays one
+# down, see there. zigbee2mqtt reads its port from ITS file, not from the
+# environment, so the wizard's answer must be written there on the first
+# pass -- and never on a later one.
 RENDERED = ("zigbee2mqtt/configuration.yaml",)
 
 # Directories that bear this package's name: DELETED then copied again.
@@ -189,18 +190,16 @@ def render_env(values):
 
 
 def copy_stack(dest):
-    """Copy stack/ to dest without overwriting PRESERVED.
-
-    Returns the set of PRESERVED relative paths this copy CREATED -- those
-    that already existed are not in it. The caller uses it to render the
-    templates on the first pass only.
-    """
-    existing = {rel for rel in PRESERVED
-                if os.path.lexists(os.path.join(dest, rel))}
-    keep = {os.path.normpath(os.path.join(dest, rel)) for rel in existing}
+    """Copy stack/ to dest without overwriting PRESERVED and without laying
+    down a single RENDERED template: render_templates() writes those,
+    finished."""
+    keep = {os.path.normpath(os.path.join(dest, rel)) for rel in PRESERVED
+            if os.path.lexists(os.path.join(dest, rel))}
+    keep |= {os.path.normpath(os.path.join(dest, rel)) for rel in RENDERED}
 
     def copy_unless_preserved(src, dst):
-        # The copy SKIPS what already exists among PRESERVED, rather than
+        # The copy SKIPS the templates, and what already exists among
+        # PRESERVED rather than
         # overwriting it and writing it back afterwards: between the two, a
         # crash or a container restart would find the packaged file in place
         # of the installation's -- for mosquitto.conf, a Dynamic Security
@@ -229,17 +228,55 @@ def copy_stack(dest):
         if os.path.exists(path):
             os.remove(path)
 
-    return set(PRESERVED) - existing
-
 
 def render_file(path, values):
-    """Replace the @KEYS@ of a deployed file, in place."""
+    """The text of the template at `path`, its @KEYS@ replaced."""
     with open(path) as fh:
         text = fh.read()
     for key, value in values.items():
         text = text.replace(f"@{key}@", value)
-    with open(path, "w") as fh:
-        fh.write(text)
+    return text
+
+
+def unrendered_templates(dest, values):
+    """The RENDERED files already in place that still hold a placeholder this
+    hook renders, as (relative path, placeholders) pairs.
+
+    Such a file is a template that an install interrupted between the copy
+    and the rendering left behind, when the two were separate steps. It is
+    installation data all the same (zigbee2mqtt may have written to it), so
+    it is reported, never rewritten.
+    """
+    found = []
+    for rel in RENDERED:
+        text = safe_files.read_text(os.path.join(dest, rel)) or ""
+        left = [f"@{key}@" for key in values if f"@{key}@" in text]
+        if left:
+            found.append((rel, left))
+    return found
+
+
+def render_templates(dest, values):
+    """Create each absent RENDERED file from its template, finished.
+
+    A template visible in the deployment directory, even for an instant,
+    would be "preserved" by the next run and never rendered again. So the
+    text is rendered in memory and put in place by a rename: the file is
+    either absent or complete, whatever interrupts the phase. A file already
+    present carries the real configuration and is left alone -- injecting
+    the wizard's answers again would replace the live Zigbee network with a
+    new one. Returns the relative paths created.
+    """
+    created = []
+    for rel in RENDERED:
+        path = os.path.join(dest, rel)
+        if os.path.lexists(path):
+            continue
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        safe_files.write_atomic(
+            path, render_file(os.path.join(STACK, rel), values), 0o644)
+        created.append(rel)
+    return created
 
 
 def main():
@@ -290,6 +327,23 @@ def main():
         with open(env_path) as fh:
             existing_env = env_values(fh.read())
 
+    # Rule 2 again: a template left unrendered by an interrupted install is
+    # found before the first write. zigbee2mqtt cannot open a radio at
+    # tcp://@SLZB_HOST@..., and nothing in its log points back to this hook.
+    try:
+        stale = unrendered_templates(dest, values)
+    except (OSError, ValueError) as exc:
+        print(f"home-manager install: {exc}", file=sys.stderr)
+        return 1
+    for rel, left in stale:
+        print(f"home-manager install: {rel} still holds the template "
+              f"placeholder(s) {', '.join(left)}: an earlier install was "
+              "interrupted before rendering it. Delete the file and re-run "
+              "to have it rendered from the answers, or replace the "
+              "placeholders by hand", file=sys.stderr)
+    if stale:
+        return 1
+
     # Rule 2 again: the MQTT accounts are read and checked before the first
     # write, so a password file that cannot be carried over, an accounts
     # file that lacks one of its accounts or a planted symbolic link stops
@@ -297,34 +351,44 @@ def main():
     with open(os.path.join(STACK, mqtt_accounts.CONF_REL)) as fh:
         broker_template = fh.read()
     try:
-        broker_plan = mqtt_accounts.plan(
-            dest, broker_template, existing_env,
-            text_answer(answers, "mqtt_password"))
+        broker_plan = mqtt_accounts.plan(dest, broker_template, existing_env)
+        mqtt_clients.require_safe_targets(root, dest)
     except ValueError as exc:
         print(f"home-manager install: {exc}", file=sys.stderr)
         return 1
 
     # The order below is the guarantee, each step durable before the next:
-    # the admin secret is in .env before the accounts file that needs it,
+    # every secret the accounts file is built from is in .env before it,
     # and the accounts file is complete before any Dynamic Security
     # configuration is on disk -- laid by the copy on a fresh install, or
     # rewritten by migrate_conf() on an existing one. A failure at any step
     # leaves a broker that still starts with every account it had.
     emit({"event": "progress", "pct": 20, "msg": "MQTT accounts"})
     try:
-        if broker_plan["admin_is_new"]:
+        if broker_plan["new_secrets"]:
             os.makedirs(dest, exist_ok=True)
             safe_files.write_atomic(env_path, merge_env(
                 safe_files.read_text(env_path) or "",
-                "{}={}\n".format(mqtt_accounts.ADMIN_ENV_KEY,
-                                 broker_plan["admin_password"])), 0o600)
+                "".join(f"{key}={value}\n" for key, value
+                        in broker_plan["new_secrets"].items())), 0o600)
         report = mqtt_accounts.write_accounts(dest, broker_plan)
 
         emit({"event": "progress", "pct": 25, "msg": "Depose de la pile"})
-        created = copy_stack(dest)
+        copy_stack(dest)
 
         report += mqtt_accounts.migrate_conf(dest, broker_template,
                                              broker_plan)
+
+        # After the copy and the migration, so that nothing can fail between
+        # a template and its rendering: there is no template on disk at all.
+        rendered_now = render_templates(dest, values)
+
+        # Each client the hook created an account for receives its password
+        # where it reads it. Done on every pass from what .env holds, so a
+        # run interrupted after the accounts file still ends up wired.
+        report += mqtt_clients.deliver(
+            root, dest, {**existing_env, **broker_plan["new_secrets"]},
+            rendered_now)
     except (OSError, ValueError) as exc:
         print(f"home-manager install: MQTT accounts: {exc}", file=sys.stderr)
         return 1
@@ -332,13 +396,6 @@ def main():
         emit({"event": "progress", "pct": 55, "msg": line})
         if line.startswith("WARNING"):
             print(f"home-manager install: {line}", file=sys.stderr)
-
-    # Deployed templates are rendered on the first pass only: a file already
-    # present carries the real configuration, and injecting the wizard's
-    # answers again would replace the live Zigbee network with a new one.
-    for rel in RENDERED:
-        if rel in created:
-            render_file(os.path.join(dest, rel), values)
 
     emit({"event": "progress", "pct": 65, "msg": "Rendu de la configuration"})
     rendered = render_env(values)

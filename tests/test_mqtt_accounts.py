@@ -146,6 +146,9 @@ def may_publish(role, topic):
 
 
 command = "system_agent/nivuus/reboot/set"
+check("the legacy role exists only next to carried accounts",
+      "legacy-full-access" in {r["rolename"] for r in
+                               ma.build_dynsec(encoded, [])["roles"]}, False)
 check("only HA, the agent, the operator and legacy accounts may publish "
       "the agent's commands",
       sorted(r for r in roles if may_publish(r, command)),
@@ -165,6 +168,8 @@ for role, acls in roles.items():
 
 # --- fresh install --------------------------------------------------------
 with tempfile.TemporaryDirectory() as root:
+    # An answer left over from the time the wizard asked for the password
+    # of a shared account: it must create nothing.
     proc = run(root, {"mqtt_password": "wizard-pw"})
     check("fresh install succeeds", proc.returncode, 0)
     data = pathlib.Path(root) / DEST_REL / "mosquitto"
@@ -181,8 +186,10 @@ with tempfile.TemporaryDirectory() as root:
     check("the admin secret lands in .env", bool(admin), True)
     check("the admin client verifies with it",
           verify(found[ma.ADMIN_USERNAME]["encoded_password"], admin), True)
-    check("the wizard's mqtt_password becomes the shared account",
-          verify(found["mqtt"]["encoded_password"], "wizard-pw"), True)
+    check("a fresh install has no shared account", "mqtt" in found, False)
+    check("no client of a fresh install has unrestricted legacy access",
+          [name for name, c in found.items()
+           if {"rolename": "legacy-full-access"} in c["roles"]], [])
     check("no backup on a fresh install",
           (data / "mosquitto.conf.pre-dynsec").exists(), False)
 
@@ -204,8 +211,12 @@ with tempfile.TemporaryDirectory() as root:
           found["mqtt"]["encoded_password"], HASH)
     check("mqtt keeps full access",
           found["mqtt"]["roles"], [{"rolename": "legacy-full-access"}])
-    check("the wizard answer does not replace an existing account",
+    # Which device logs in as what is the operator's knowledge: accounts
+    # are carried as they are, and no client is created next to them.
+    check("a migration creates no client next to the carried accounts",
           sorted(found), sorted([ma.ADMIN_USERNAME, "mqtt"]))
+    check("the carried full access is reported on stderr",
+          "legacy-full-access" in proc.stderr, True)
     check("the configuration is migrated",
           (data / "mosquitto.conf").read_text(), TEMPLATE)
     check("the previous configuration is backed up, byte for byte",

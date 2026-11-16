@@ -14,6 +14,27 @@ This page is the short version for whoever touches the broker next.
 | `mosquitto/passwd` | legacy, read only | nobody since the migration |
 | `mosquitto/acl_meross` | 8883 ACL | the operator |
 | `.env` `MQTT_ADMIN_PASSWORD` | root, 0600 | the hook, once |
+| `.env` `MQTT_HOMEASSISTANT_PASSWORD`, `MQTT_ZIGBEE2MQTT_PASSWORD`, `MQTT_SYSTEM_AGENT_PASSWORD` | root, 0600 | the hook, once, fresh install only |
+| `zigbee2mqtt/mqtt-credentials.yaml` | zigbee2mqtt (0600) | the hook if absent, then zigbee2mqtt |
+| `/etc/mqtt-system-agent.env` `MQTT_USERNAME`, `MQTT_PASSWORD` | the agent's package, root, 0600 | the hook, only when the file defines neither |
+
+## Fresh install: one client per client, no shared account
+
+`hooks/mqtt_clients.py` lists the clients the package knows by name
+(`homeassistant`, `zigbee2mqtt`, `mqtt-system-agent`). When the hook creates
+the accounts file and has no password-file account to carry over, each gets
+its own client and role, and no `legacy-full-access` role exists. Passwords
+are saved in `.env` first, then handed over on every pass (so an interrupted
+run still ends up wired). Home Assistant's is typed once in its MQTT
+integration: user `homeassistant`, password `MQTT_HOMEASSISTANT_PASSWORD`.
+
+Robots, tablets and the operator's own account are created by hand
+(`mqctl createClient` + `addClientRole`, see the spec). An install that
+carried accounts over gets none of this automatically: follow the spec's
+per-client procedure, then delete the carried accounts.
+
+The wizard asks for no broker password any more. A `mqtt_password` answer
+kept from an earlier version is ignored.
 
 ## Rules not to undo
 
