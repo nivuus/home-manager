@@ -43,9 +43,16 @@ check("aucun claim", "claims" in data, False)
 # liste de features du moteur — precedent pose par console avec firewalld.
 # requires.features: [docker] casserait l'installation autonome sur une Debian
 # ordinaire, que le contrat existe precisement pour permettre.
-check("docker declare en apt", "docker.io" in (data.get("apt") or []), True)
-check("compose declare en apt",
-      "docker-compose-v2" in (data.get("apt") or []), True)
+#
+# Docker itself is NOT in that list. The engine installs the apt lists of all
+# selected packages in one transaction: a name the target suite does not have
+# (docker-compose-v2 is Ubuntu's, absent from Debian trixie) leaves every
+# package's dependencies uninstalled, and docker.io conflicts with the Docker
+# CE the reference host runs. Same position as media-manager's manifest.
+DOCKER_APT_NAMES = {"docker.io", "docker-ce", "docker-compose",
+                    "docker-compose-v2", "docker-compose-plugin"}
+check("no Docker packaging is declared in apt",
+      sorted(DOCKER_APT_NAMES & set(data.get("apt") or [])), [])
 check("pas de requires.features",
       "features" in (data.get("requires") or {}), False)
 
