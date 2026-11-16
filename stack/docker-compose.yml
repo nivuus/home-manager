@@ -15,9 +15,20 @@
 # supprime.
 name: home-manager
 
+# Bounded container logs. The Docker daemon's own default may or may not cap
+# them (installer ships one, but a stack cannot see the daemon's settings), so
+# every service states its cap here: 10 MB x 3 files, at most 30 MB per
+# container. tests/test_compose_portable.py fails when a service lacks it.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   homeassistant:
     container_name: homeassistant
+    logging: *default-logging
     image: ghcr.io/home-assistant/home-assistant:stable
     labels:
       com.centurylinklabs.watchtower.enable: true
@@ -40,6 +51,7 @@ services:
   # filtree sur la boucle locale, jamais sur le reseau.
   docker-socket-proxy:
     container_name: docker-socket-proxy
+    logging: *default-logging
     image: tecnativa/docker-socket-proxy:latest
     restart: always
     read_only: true
@@ -84,6 +96,7 @@ services:
 
   mosquitto:
     container_name: mosquitto
+    logging: *default-logging
     # Pinned, tag AND digest: mosquitto/mosquitto.conf needs >= 2.1
     # (plugin_load, plugin_use, listener_allow_anonymous), and the accounts
     # migration was proven against this exact image
@@ -107,6 +120,7 @@ services:
   # ttyACM changeants, usbguard et les « error -71 ».
   otbr:
     container_name: otbr
+    logging: *default-logging
     image: bnutzer/otbr-tcp
     restart: always
     privileged: true
@@ -151,6 +165,7 @@ services:
   # son propre configuration.yaml, rendu une seule fois par hooks/install.py.
   zigbee2mqtt:
     container_name: zigbee2mqtt
+    logging: *default-logging
     image: koenkk/zigbee2mqtt:latest
     restart: always
     network_mode: host
@@ -165,6 +180,7 @@ services:
   # que dans le demon Docker, sans label ni compose, donc irreproductible.
   matterjs-server:
     container_name: matterjs-server
+    logging: *default-logging
     image: ghcr.io/matter-js/matterjs-server:stable
     restart: unless-stopped
     network_mode: host
@@ -191,6 +207,7 @@ services:
   # echouerait sans message clair.
   music-assistant:
     container_name: music-assistant
+    logging: *default-logging
     image: ghcr.io/music-assistant/server:latest
     restart: unless-stopped
     network_mode: host
@@ -216,7 +233,12 @@ services:
   # derive entre les deux, que bgutil refuse. C'est le pin qui casse.
   bgutil-pot-provider:
     container_name: bgutil-pot-provider
+    logging: *default-logging
     image: brainicism/bgutil-ytdlp-pot-provider:latest
+    # Followed by the agent's update tracking: without the label the image is
+    # pulled once and never again, which is the client/server drift above.
+    labels:
+      com.centurylinklabs.watchtower.enable: true
     restart: unless-stopped
     init: true
     ports:
@@ -238,6 +260,7 @@ services:
   # premier appel en echec le jour ou la re-authentification est necessaire.
   stellantis-worker:
     container_name: stellantis-worker
+    logging: *default-logging
     build: ./stellantis-worker
     restart: unless-stopped
     init: true
