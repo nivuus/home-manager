@@ -91,5 +91,51 @@
     "persona_failed": {
       "message": "The persona could not answer."
     }
+  },
+  "services": {
+    "send_event": {
+      "name": "Send an event",
+      "description": "Sends a life event, as free text, on the events channel (does not block the automation, no answer expected). To get an answer, use the conversation entity, which talks to another destination.",
+      "fields": {
+        "text": {
+          "name": "Text",
+          "description": "The content or event passed on to the persona."
+        },
+        "persona": {
+          "name": "Persona",
+          "description": "Target persona (by default the one of the events channel). No effect when the channel URL is a complete endpoint: it already names its recipient. The case is then reported in the log."
+        },
+        "event_type": {
+          "name": "Event type",
+          "description": "Studio event type (default ha_automation)."
+        }
+      }
+    },
+    "send_feedback": {
+      "name": "Send feedback about an entity",
+      "description": "Sends structured feedback about a Home Assistant entity, without waiting for an answer, on the feedback channel: notifications and repairs.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "What the feedback is about. Not necessarily an entity of the registry: the identifier of a persistent notification or of a repair issue works too."
+        },
+        "event_type": {
+          "name": "Event type",
+          "description": "Kind of feedback, on the studio side."
+        },
+        "accepted": {
+          "name": "Accepted",
+          "description": "Whether the feedback is positive (default yes)."
+        },
+        "suggestion_id": {
+          "name": "Suggestion identifier",
+          "description": "Suggestion targeted on the studio side (default latest)."
+        },
+        "persona": {
+          "name": "Persona",
+          "description": "Target persona (by default the one of the feedback channel). No effect when the channel URL is a complete endpoint: it already names its recipient. The case is then reported in the log."
+        }
+      }
+    }
   }
 }
